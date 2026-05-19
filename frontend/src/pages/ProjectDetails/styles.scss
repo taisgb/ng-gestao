@@ -1,0 +1,466 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$clay-orange: #d4a373;
+$ink-blue: #34516f;
+$sand-bg: #f9f7f2;
+$line: #ece7df;
+
+.project-details-container {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 20px;
+
+  .details-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 24px;
+
+    h1 {
+      color: $earth-brown;
+      margin-bottom: 5px;
+      font-size: 1.8rem;
+    }
+
+    p {
+      color: #777;
+    }
+
+    .project-badge {
+      background: #edf2f7;
+      color: $ink-blue;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+  }
+
+  .feedback-message {
+    background: #eef7ed;
+    border: 1px solid #cfe6cb;
+    color: $leaf-green;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    font-size: 0.9rem;
+  }
+
+  .project-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 26px;
+
+    .summary-item {
+      background: #fff;
+      padding: 18px;
+      border-radius: 8px;
+      border: 1px solid $line;
+
+      span {
+        display: block;
+        font-size: 0.78rem;
+        color: #888;
+        margin-bottom: 5px;
+      }
+
+      strong {
+        font-size: 1.1rem;
+        color: $earth-brown;
+
+        &.income {
+          color: $leaf-green;
+        }
+      }
+    }
+  }
+
+  .finance-split-section {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 28px;
+
+    .split-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+
+      h2 {
+        color: $earth-brown;
+        font-size: 1rem;
+        margin-bottom: 4px;
+      }
+
+      p {
+        color: #777;
+        font-size: 0.9rem;
+      }
+
+      span {
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        white-space: nowrap;
+
+        &.balanced {
+          background: #eef7ed;
+          color: $leaf-green;
+        }
+
+        &.pending {
+          background: #fff4e6;
+          color: #a15b17;
+        }
+      }
+    }
+
+    .split-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+
+      input {
+        border: 1px solid $line;
+        border-radius: 8px;
+        padding: 10px;
+        font-size: 0.9rem;
+        min-width: 0;
+
+        &:disabled {
+          background: #f6f4ef;
+          color: #888;
+        }
+      }
+
+      button {
+        align-self: flex-end;
+        border: 0;
+        background: $ink-blue;
+        color: #fff;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+    }
+
+    .total-field {
+      display: grid;
+      grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+
+      label {
+        color: #777;
+        font-size: 0.85rem;
+      }
+    }
+
+    .share-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .share-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 160px;
+      gap: 12px;
+      align-items: center;
+      border-top: 1px solid $sand-bg;
+      padding-top: 10px;
+
+      strong {
+        display: block;
+        color: $earth-brown;
+        font-size: 0.92rem;
+      }
+
+      span {
+        color: #888;
+        font-size: 0.78rem;
+      }
+    }
+  }
+
+  .collaboration-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 28px;
+
+    .panel-section {
+      background: #fff;
+      border: 1px solid $line;
+      border-radius: 8px;
+      padding: 18px;
+
+      h2 {
+        font-size: 1rem;
+        color: $earth-brown;
+        margin-bottom: 14px;
+      }
+    }
+  }
+
+  .status-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+
+    button {
+      border: 1px solid $line;
+      background: $sand-bg;
+      color: $earth-brown;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.82rem;
+      cursor: pointer;
+
+      &.active {
+        background: $ink-blue;
+        border-color: $ink-blue;
+        color: #fff;
+      }
+    }
+  }
+
+  .inline-form {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+
+    input {
+      min-width: 0;
+      border: 1px solid $line;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.9rem;
+    }
+
+    button {
+      border: 0;
+      background: $leaf-green;
+      color: #fff;
+      border-radius: 8px;
+      padding: 0 14px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+  }
+
+  .members-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+
+    .member-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 9px 0;
+      border-bottom: 1px solid $sand-bg;
+
+      strong {
+        color: $earth-brown;
+        font-size: 0.9rem;
+      }
+
+      span {
+        color: #777;
+        font-size: 0.8rem;
+      }
+    }
+  }
+
+  .details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 28px;
+
+    .details-section {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid $line;
+
+      h2 {
+        font-size: 1rem;
+        color: $earth-brown;
+        margin-bottom: 16px;
+        border-bottom: 1px solid $sand-bg;
+        padding-bottom: 10px;
+      }
+
+      .empty {
+        font-size: 0.9rem;
+        color: #aaa;
+      }
+    }
+  }
+
+  .tasks-mini-list,
+  .finance-mini-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    .task-item,
+    .finance-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid $sand-bg;
+      font-size: 0.9rem;
+    }
+
+    .finance-item.receita strong {
+      color: $leaf-green;
+    }
+
+    .finance-item.despesa strong {
+      color: #c24141;
+    }
+  }
+
+  .private-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+
+    span {
+      background: $sand-bg;
+      border-radius: 8px;
+      color: $earth-brown;
+      font-size: 0.78rem;
+      padding: 6px 8px;
+    }
+  }
+
+  .notes-section {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 20px;
+
+    h2 {
+      font-size: 1rem;
+      color: $earth-brown;
+      margin-bottom: 16px;
+    }
+
+    .note-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 18px;
+
+      textarea {
+        width: 100%;
+        resize: vertical;
+        border: 1px solid $line;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 0.95rem;
+        font-family: inherit;
+      }
+
+      button {
+        align-self: flex-end;
+        border: 0;
+        background: $ink-blue;
+        color: #fff;
+        border-radius: 8px;
+        padding: 10px 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+    }
+
+    .notes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .note-item {
+      border-top: 1px solid $sand-bg;
+      padding-top: 12px;
+
+      p {
+        color: $earth-brown;
+        line-height: 1.5;
+        margin-bottom: 6px;
+      }
+
+      span {
+        color: #888;
+        font-size: 0.78rem;
+      }
+    }
+
+    .empty {
+      color: #aaa;
+      font-size: 0.9rem;
+    }
+  }
+}
+
+@media (max-width: 760px) {
+  .project-details-container {
+    padding: 16px;
+
+    .details-header,
+    .collaboration-panel,
+    .details-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .details-header {
+      display: grid;
+    }
+
+    .project-summary {
+      grid-template-columns: 1fr;
+    }
+
+    .inline-form {
+      grid-template-columns: 1fr;
+
+      button {
+        min-height: 40px;
+      }
+    }
+
+    .finance-split-section {
+      .split-header {
+        display: grid;
+      }
+
+      .total-field,
+      .share-row {
+        grid-template-columns: 1fr;
+      }
+
+      .split-form button {
+        width: 100%;
+      }
+    }
+  }
+}

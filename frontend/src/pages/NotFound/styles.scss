@@ -1,0 +1,39 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$line: #ece7df;
+
+.not-found-container {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+
+  section {
+    max-width: 420px;
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 28px;
+    text-align: center;
+
+    h1 {
+      color: $earth-brown;
+      margin-bottom: 8px;
+    }
+
+    p {
+      color: #777;
+      margin-bottom: 18px;
+    }
+
+    a {
+      display: inline-flex;
+      background: $leaf-green;
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-weight: 700;
+    }
+  }
+}

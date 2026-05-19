@@ -1,0 +1,64 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$clay-orange: #d4a373;
+$bg-white: #ffffff;
+
+.finance-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 40px;
+
+    .card {
+      background: $bg-white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+
+      span { font-size: 0.9rem; color: #8c8c8c; }
+      strong { font-size: 1.5rem; color: $earth-brown; }
+
+      &.income strong { color: $leaf-green; }
+      &.expense strong { color: #d32f2f; }
+      &.total.positive strong { color: $leaf-green; }
+      &.total.negative strong { color: #d32f2f; }
+    }
+  }
+
+  .transactions-table {
+    background: $bg-white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      
+      th {
+        text-align: left;
+        padding: 12px;
+        border-bottom: 2px solid #f9f7f2;
+        color: #8c8c8c;
+        font-weight: 500;
+      }
+
+      td {
+        padding: 16px 12px;
+        border-bottom: 1px solid #f9f7f2;
+        color: $earth-brown;
+      }
+
+      .receita .amount-cell { color: $leaf-green; font-weight: 600; }
+      .despesa .amount-cell { color: #d32f2f; font-weight: 600; }
+    }
+  }
+}

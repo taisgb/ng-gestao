@@ -1,0 +1,125 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$sand-bg: #f9f7f2;
+$line: #ece7df;
+$ink-blue: #34516f;
+
+.admin-container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px;
+
+  .page-header {
+    margin-bottom: 20px;
+
+    h1 { color: $earth-brown; }
+    p { color: #777; margin-top: 4px; }
+  }
+
+  .feedback-message,
+  .blocked-panel {
+    background: #eef7ed;
+    border: 1px solid #cfe6cb;
+    color: $leaf-green;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+  }
+
+  .blocked-panel {
+    background: #fff4e6;
+    border-color: #f0c58d;
+    color: #945b16;
+
+    strong { display: block; margin-bottom: 4px; }
+  }
+
+  .admin-panel {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 18px;
+
+    h2 {
+      color: $earth-brown;
+      font-size: 1rem;
+      margin-bottom: 14px;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 170px auto;
+      gap: 10px;
+
+      input,
+      select {
+        border: 1px solid $line;
+        border-radius: 8px;
+        padding: 10px;
+        min-width: 0;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        background: $leaf-green;
+        color: #fff;
+        font-weight: 700;
+        padding: 0 14px;
+      }
+    }
+  }
+
+  .admin-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .admin-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 170px;
+    gap: 12px;
+    align-items: center;
+    border-top: 1px solid $sand-bg;
+    padding-top: 10px;
+
+    strong {
+      display: block;
+      color: $earth-brown;
+      margin-bottom: 4px;
+    }
+
+    span,
+    small {
+      color: #777;
+      font-size: 0.82rem;
+    }
+
+    select {
+      border: 1px solid $line;
+      border-radius: 8px;
+      padding: 9px;
+      color: $ink-blue;
+      font-weight: 700;
+    }
+  }
+
+  .empty-text {
+    color: #888;
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-container {
+    .admin-panel form,
+    .admin-row {
+      grid-template-columns: 1fr;
+    }
+
+    .admin-panel form button {
+      min-height: 40px;
+    }
+  }
+}

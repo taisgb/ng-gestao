@@ -1,0 +1,112 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$sand-bg: #f9f7f2;
+$line: #ece7df;
+
+.services-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+
+  .page-header {
+    margin-bottom: 20px;
+    h1 { color: $earth-brown; }
+    p { color: #777; margin-top: 4px; }
+  }
+
+  .feedback-message {
+    background: #eef7ed;
+    border: 1px solid #cfe6cb;
+    color: $leaf-green;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+  }
+
+  .service-form {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 20px;
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 160px 1.2fr auto;
+      gap: 10px;
+
+      input {
+        min-width: 0;
+        border: 1px solid $line;
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        background: $leaf-green;
+        color: #fff;
+        font-weight: 700;
+        padding: 0 14px;
+      }
+    }
+  }
+
+  .services-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .service-card {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+
+    strong { color: $earth-brown; }
+    p { color: #777; font-size: 0.88rem; margin-top: 4px; }
+  }
+
+  .service-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    span {
+      color: $leaf-green;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    button {
+      border: 1px solid $line;
+      border-radius: 8px;
+      background: $sand-bg;
+      color: #c24141;
+      padding: 8px 10px;
+    }
+  }
+
+  .empty-msg { color: #888; }
+}
+
+@media (max-width: 780px) {
+  .services-container {
+    .service-form form {
+      grid-template-columns: 1fr;
+
+      button { min-height: 40px; }
+    }
+
+    .service-card {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+}

@@ -1,0 +1,70 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$clay-orange: #d4a373;
+
+.upgrade-container {
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 60px 20px;
+
+  header {
+    margin-bottom: 50px;
+    h1 { color: $earth-brown; font-size: 2.5rem; }
+    p { color: #8c8c8c; font-size: 1.1rem; }
+  }
+
+  .plans-comparison {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+
+    .plan-card {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      width: 300px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+      
+      &.featured {
+        border: 2px solid $clay-orange;
+        position: relative;
+        transform: scale(1.05);
+        
+        .badge {
+          position: absolute;
+          top: -12px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: $clay-orange;
+          color: white;
+          padding: 4px 12px;
+          border-radius: 20px;
+          font-size: 0.7rem;
+          font-weight: bold;
+        }
+      }
+
+      h3 { margin-bottom: 25px; color: $earth-brown; }
+      
+      ul {
+        list-style: none;
+        text-align: left;
+        margin-bottom: 30px;
+        li { padding: 10px 0; border-bottom: 1px solid #f9f7f2; color: #666; }
+      }
+
+      button {
+        width: 100%;
+        padding: 12px;
+        border-radius: 6px;
+        border: none;
+        background: $leaf-green;
+        color: white;
+        font-weight: bold;
+        
+        &:disabled { background: #ccc; }
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+$earth-brown: #4a4238;
+$leaf-green: #6d7a5f;
+$clay-orange: #d4a373;
+
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+
+  .project-card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+
+    .project-main-info {
+      h3 { color: $earth-brown; margin-bottom: 4px; }
+      .client-tag { 
+        font-size: 0.8rem; 
+        background: #f0ede9; 
+        padding: 2px 8px; 
+        border-radius: 4px;
+        color: $leaf-green;
+      }
+      .shared-tag {
+        display: inline-block;
+        margin-left: 6px;
+        font-size: 0.75rem;
+        background: #edf2f7;
+        color: #34516f;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+    }
+
+    .project-meta {
+      display: flex;
+      gap: 30px;
+      align-items: center;
+
+      .meta-item {
+        display: flex;
+        flex-direction: column;
+        span { font-size: 0.75rem; color: #999; }
+        strong { font-size: 0.95rem; color: $earth-brown; }
+      }
+    }
+
+    .status-badge {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      font-weight: bold;
+      &.pendente { color: $clay-orange; }
+      &.concluido { color: $leaf-green; }
+    }
+  }
+}
