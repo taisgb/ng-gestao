@@ -1,10 +1,32 @@
 const connectDb = require('../config/database');
 const { isEmail, isNonEmptyString, normalizeEmail } = require('../utils/validators');
+const { canEditTeamResource, canViewTeamResource } = require('../utils/permissions');
+
+async function getClientAccess(db, clientId, userId) {
+    const client = await db.get(`
+        SELECT c.*, t.name as team_name
+        FROM clients c
+        LEFT JOIN teams t ON t.id = c.team_id
+        WHERE c.id = ?
+    `, [clientId]);
+
+    if (!client) return null;
+
+    if (!client.team_id) {
+        return client.user_id === userId ? { ...client, can_edit: true, can_view_financials: true } : null;
+    }
+
+    const canView = await canViewTeamResource(db, userId, client.team_id);
+    if (!canView) return null;
+
+    const canEdit = await canEditTeamResource(db, userId, client.team_id);
+    return { ...client, can_edit: canEdit, can_view_financials: canEdit };
+}
 
 module.exports = {
     async create(req, res) {
         try {
-            const { name, contact_name, phone, document } = req.body;
+            const { name, contact_name, phone, document, team_id } = req.body;
             const email = req.body.email ? normalizeEmail(req.body.email) : null;
             const userId = req.userId;
 
@@ -13,11 +35,16 @@ module.exports = {
             }
 
             const db = await connectDb();
+
+            if (team_id && !await canEditTeamResource(db, userId, team_id)) {
+                return res.status(403).json({ error: 'Sem permissao para criar cliente neste time.' });
+            }
+
             const user = await db.get('SELECT plan FROM users WHERE id = ?', [userId]);
 
-            if (user.plan === 'free') {
+            if (!team_id && user.plan === 'free') {
                 const count = await db.get(
-                    'SELECT COUNT(*) as total FROM clients WHERE user_id = ? AND archived = 0',
+                    'SELECT COUNT(*) as total FROM clients WHERE user_id = ? AND team_id IS NULL AND archived = 0',
                     [userId]
                 );
 
@@ -29,9 +56,9 @@ module.exports = {
             }
 
             const result = await db.run(`
-                INSERT INTO clients (user_id, name, contact_name, phone, email, document)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `, [userId, name.trim(), contact_name || null, phone || null, email, document || null]);
+                INSERT INTO clients (user_id, team_id, scope, name, contact_name, phone, email, document)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [userId, team_id || null, team_id ? 'team' : 'individual', name.trim(), contact_name || null, phone || null, email, document || null]);
 
             return res.status(201).json({ id: result.lastID, message: 'Cliente cadastrado com sucesso!' });
         } catch (error) {
@@ -42,12 +69,32 @@ module.exports = {
 
     async index(req, res) {
         try {
+            const status = ['active', 'archived', 'all'].includes(req.query.status)
+                ? req.query.status
+                : 'active';
             const db = await connectDb();
             const clients = await db.all(`
-                SELECT * FROM clients 
-                WHERE user_id = ? AND archived = 0 
-                ORDER BY name ASC
-            `, [req.userId]);
+                SELECT c.*, t.name as team_name,
+                       CASE WHEN c.team_id IS NULL THEN 'individual' ELSE 'team' END as client_scope,
+                       CASE 
+                           WHEN c.team_id IS NULL THEN 1
+                           WHEN tm.role IN ('owner', 'admin', 'gestor') THEN 1
+                           ELSE 0
+                       END as can_edit
+                FROM clients c
+                LEFT JOIN teams t ON t.id = c.team_id
+                LEFT JOIN team_members tm 
+                    ON tm.team_id = c.team_id 
+                    AND tm.user_id = ?
+                    AND tm.status = 'active'
+                WHERE (
+                    (? = 'active' AND c.archived = 0)
+                    OR (? = 'archived' AND c.archived = 1)
+                    OR ? = 'all'
+                )
+                  AND ((c.team_id IS NULL AND c.user_id = ?) OR tm.user_id IS NOT NULL)
+                ORDER BY c.archived ASC, c.name ASC
+            `, [req.userId, status, status, status, req.userId]);
 
             return res.json(clients);
         } catch (error) {
@@ -60,11 +107,7 @@ module.exports = {
         try {
             const { id } = req.params;
             const db = await connectDb();
-
-            const client = await db.get(
-                'SELECT * FROM clients WHERE id = ? AND user_id = ? AND archived = 0',
-                [id, req.userId]
-            );
+            const client = await getClientAccess(db, id, req.userId);
 
             if (!client) {
                 return res.status(404).json({ error: 'Cliente nao encontrado ou acesso negado.' });
@@ -77,12 +120,53 @@ module.exports = {
         }
     },
 
+    async projects(req, res) {
+        try {
+            const { id } = req.params;
+            const { include_archived } = req.query;
+            const db = await connectDb();
+            const client = await getClientAccess(db, id, req.userId);
+
+            if (!client) {
+                return res.status(404).json({ error: 'Cliente nao encontrado ou acesso negado.' });
+            }
+
+            const projects = await db.all(`
+                SELECT p.id, p.title, p.status, p.base_value, p.deadline, p.archived, p.archived_at, p.team_id,
+                       CASE WHEN p.user_id = ? THEN 1 ELSE 0 END as is_owner
+                FROM projects p
+                WHERE p.client_id = ?
+                  AND (? = 'true' OR p.archived = 0)
+                ORDER BY p.archived ASC, p.id DESC
+            `, [req.userId, id, include_archived === 'true' ? 'true' : 'false']);
+
+            const canSeeValues = !client.team_id || client.can_view_financials;
+            return res.json(projects.map(project => ({
+                ...project,
+                base_value: canSeeValues ? project.base_value : null,
+                can_view_financials: canSeeValues
+            })));
+        } catch (error) {
+            console.error('[ClientController.projects]', error);
+            return res.status(500).json({ error: 'Erro ao buscar projetos do cliente.' });
+        }
+    },
+
     async update(req, res) {
         try {
             const { id } = req.params;
-            const { name, contact_name, phone, document } = req.body;
+            const { name, contact_name, phone, document, team_id } = req.body;
             const email = req.body.email ? normalizeEmail(req.body.email) : req.body.email;
             const db = await connectDb();
+
+            const client = await getClientAccess(db, id, req.userId);
+            if (!client || !client.can_edit) {
+                return res.status(403).json({ error: 'Sem permissao para editar este cliente.' });
+            }
+
+            if (team_id !== undefined && team_id && !await canEditTeamResource(db, req.userId, team_id)) {
+                return res.status(403).json({ error: 'Sem permissao para mover cliente para este time.' });
+            }
 
             if (name !== undefined && !isNonEmptyString(name, 160)) {
                 return res.status(400).json({ error: 'Nome do cliente invalido.' });
@@ -92,18 +176,26 @@ module.exports = {
                 return res.status(400).json({ error: 'Email invalido.' });
             }
 
-            const result = await db.run(`
+            const nextTeamId = team_id === undefined ? null : team_id || null;
+            const nextScope = team_id === undefined ? null : team_id ? 'team' : 'individual';
+
+            await db.run(`
                 UPDATE clients 
                 SET name = COALESCE(?, name),
                     contact_name = COALESCE(?, contact_name),
                     phone = COALESCE(?, phone),
                     email = COALESCE(?, email),
-                    document = COALESCE(?, document)
-                WHERE id = ? AND user_id = ?
-            `, [name === undefined ? null : name.trim(), contact_name, phone, email, document, id, req.userId]);
+                    document = COALESCE(?, document),
+                    team_id = COALESCE(?, team_id),
+                    scope = COALESCE(?, scope)
+                WHERE id = ?
+            `, [name === undefined ? null : name.trim(), contact_name, phone, email, document, nextTeamId, nextScope, id]);
 
-            if (result.changes === 0) {
-                return res.status(404).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+            if (team_id !== undefined) {
+                await db.run(
+                    'UPDATE clients SET team_id = ?, scope = ? WHERE id = ?',
+                    [team_id || null, team_id ? 'team' : 'individual', id]
+                );
             }
 
             return res.json({ message: 'Dados do cliente atualizados.' });
@@ -113,24 +205,43 @@ module.exports = {
         }
     },
 
-    async destroy(req, res) {
+    async archive(req, res) {
         try {
             const { id } = req.params;
             const db = await connectDb();
+            const client = await getClientAccess(db, id, req.userId);
 
-            const result = await db.run(
-                'UPDATE clients SET archived = 1 WHERE id = ? AND user_id = ?',
-                [id, req.userId]
-            );
-
-            if (result.changes === 0) {
-                return res.status(404).json({ error: 'Cliente nao encontrado.' });
+            if (!client || !client.can_edit) {
+                return res.status(403).json({ error: 'Sem permissao para arquivar este cliente.' });
             }
 
+            await db.run('UPDATE clients SET archived = 1 WHERE id = ?', [id]);
             return res.json({ message: 'Cliente arquivado com sucesso.' });
         } catch (error) {
-            console.error('[ClientController.destroy]', error);
+            console.error('[ClientController.archive]', error);
             return res.status(500).json({ error: 'Erro ao arquivar cliente.' });
         }
+    },
+
+    async restore(req, res) {
+        try {
+            const { id } = req.params;
+            const db = await connectDb();
+            const client = await getClientAccess(db, id, req.userId);
+
+            if (!client || !client.can_edit) {
+                return res.status(403).json({ error: 'Sem permissao para restaurar este cliente.' });
+            }
+
+            await db.run('UPDATE clients SET archived = 0 WHERE id = ?', [id]);
+            return res.json({ message: 'Cliente restaurado com sucesso.' });
+        } catch (error) {
+            console.error('[ClientController.restore]', error);
+            return res.status(500).json({ error: 'Erro ao restaurar cliente.' });
+        }
+    },
+
+    async destroy(req, res) {
+        return module.exports.archive(req, res);
     }
 };

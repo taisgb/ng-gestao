@@ -1,0 +1,356 @@
+const connectDb = require('../config/database');
+const { isNonEmptyString } = require('../utils/validators');
+const {
+    canEditProjectFinancials,
+    canEditTeamResource,
+    canViewProjectFinancials,
+    canViewTeamResource,
+    getProjectAccess
+} = require('../utils/permissions');
+
+const PROVIDERS = ['drive', 'external', 'other'];
+const TYPES = ['invoice', 'receipt', 'contract', 'briefing', 'artwork', 'image', 'boleto', 'folder', 'other'];
+
+function isUrl(value) {
+    try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol);
+    } catch {
+        return false;
+    }
+}
+
+function normalizeStatus(status) {
+    return ['active', 'archived', 'all'].includes(status) ? status : 'active';
+}
+
+async function getClientAccess(db, clientId, userId) {
+    if (!clientId) return null;
+    const client = await db.get('SELECT * FROM clients WHERE id = ?', [clientId]);
+    if (!client) return null;
+    if (!client.team_id) return client.user_id === userId ? { can_view: true, can_edit: true, team_id: null } : null;
+    const canView = await canViewTeamResource(db, userId, client.team_id);
+    if (!canView) return null;
+    return {
+        can_view: true,
+        can_edit: await canEditTeamResource(db, userId, client.team_id),
+        team_id: client.team_id
+    };
+}
+
+async function getInvoiceAccess(db, invoiceId, userId) {
+    if (!invoiceId) return null;
+    const invoice = await db.get('SELECT * FROM invoices WHERE id = ?', [invoiceId]);
+    if (!invoice) return null;
+    return invoice.user_id === userId ? { can_view: true, can_edit: true, project_id: invoice.project_id || null } : null;
+}
+
+async function getFinancialEntryAccess(db, entryId, userId) {
+    if (!entryId) return null;
+    const entry = await db.get('SELECT * FROM project_financial_entries WHERE id = ? AND archived = 0', [entryId]);
+    if (!entry) return null;
+    if (entry.user_id === userId || entry.created_by === userId) {
+        return { can_view: true, can_edit: true, project_id: entry.project_id, team_id: entry.team_id || null };
+    }
+    const canView = await canViewProjectFinancials(db, userId, entry.project_id);
+    if (!canView) return null;
+    return {
+        can_view: true,
+        can_edit: await canEditProjectFinancials(db, userId, entry.project_id),
+        project_id: entry.project_id,
+        team_id: entry.team_id || null
+    };
+}
+
+async function getDocumentAccess(db, documentId, userId) {
+    const document = await db.get(`
+        SELECT d.*, t.name as team_name, c.name as client_name, p.title as project_title, i.number as invoice_number
+        FROM documents d
+        LEFT JOIN teams t ON t.id = d.team_id
+        LEFT JOIN clients c ON c.id = d.client_id
+        LEFT JOIN projects p ON p.id = d.project_id
+        LEFT JOIN invoices i ON i.id = d.invoice_id
+        WHERE d.id = ?
+    `, [documentId]);
+
+    if (!document) return null;
+    const access = await resolveAccess(db, userId, document);
+    if (!access.can_view) return null;
+    return { ...document, ...access };
+}
+
+async function resolveAccess(db, userId, payload) {
+    let inferredTeamId = payload.team_id || null;
+
+    if (payload.team_id) {
+        const canViewTeam = await canViewTeamResource(db, userId, payload.team_id);
+        if (!canViewTeam) return { can_view: false, can_edit: false };
+    }
+
+    if (payload.project_financial_entry_id) {
+        const access = await getFinancialEntryAccess(db, payload.project_financial_entry_id, userId);
+        if (!access) return { can_view: false, can_edit: false };
+        inferredTeamId = inferredTeamId || access.team_id || null;
+        return { can_view: true, can_edit: access.can_edit, inferred_team_id: inferredTeamId };
+    }
+
+    if (payload.project_id) {
+        const project = await getProjectAccess(db, userId, payload.project_id);
+        if (!project) return { can_view: false, can_edit: false };
+        inferredTeamId = inferredTeamId || project.team_id || project.client_team_id || null;
+        return {
+            can_view: true,
+            can_edit: ['owner', 'admin', 'gestor'].includes(project.access_role),
+            inferred_team_id: inferredTeamId
+        };
+    }
+
+    if (payload.client_id) {
+        const clientAccess = await getClientAccess(db, payload.client_id, userId);
+        if (!clientAccess) return { can_view: false, can_edit: false };
+        inferredTeamId = inferredTeamId || clientAccess.team_id || null;
+        return { can_view: true, can_edit: clientAccess.can_edit, inferred_team_id: inferredTeamId };
+    }
+
+    if (payload.invoice_id) {
+        const invoiceAccess = await getInvoiceAccess(db, payload.invoice_id, userId);
+        if (!invoiceAccess) return { can_view: false, can_edit: false };
+        return { can_view: true, can_edit: invoiceAccess.can_edit, inferred_team_id: inferredTeamId };
+    }
+
+    if (payload.team_id) {
+        const canView = await canViewTeamResource(db, userId, payload.team_id);
+        if (!canView) return { can_view: false, can_edit: false };
+        return {
+            can_view: true,
+            can_edit: await canEditTeamResource(db, userId, payload.team_id),
+            inferred_team_id: payload.team_id
+        };
+    }
+
+    return {
+        can_view: payload.user_id === userId || payload.user_id === undefined,
+        can_edit: payload.user_id === userId || payload.user_id === undefined,
+        inferred_team_id: null
+    };
+}
+
+function validatePayload(body, partial = false) {
+    if (!partial || body.file_name !== undefined) {
+        if (!isNonEmptyString(body.file_name, 180)) return 'Nome do documento e obrigatorio.';
+    }
+    if (!partial || body.file_url !== undefined) {
+        if (!isNonEmptyString(body.file_url, 1000) || !isUrl(body.file_url)) return 'Link do documento invalido.';
+    }
+    if (body.provider !== undefined && !PROVIDERS.includes(body.provider)) return 'Provider invalido.';
+    if (body.document_type !== undefined && !TYPES.includes(body.document_type)) return 'Tipo de documento invalido.';
+    return null;
+}
+
+module.exports = {
+    _resolveAccess: resolveAccess,
+
+    async index(req, res) {
+        try {
+            const db = await connectDb();
+            const status = normalizeStatus(req.query.status);
+            const filters = ['team_id', 'client_id', 'project_id', 'invoice_id', 'document_type', 'provider'];
+            const params = [req.userId, req.userId, status, status, status];
+            let query = `
+                SELECT d.*, t.name as team_name, c.name as client_name, p.title as project_title, i.number as invoice_number,
+                       CASE
+                           WHEN d.team_id IS NULL AND d.user_id = ? THEN 1
+                           WHEN tm.role IN ('owner', 'admin', 'gestor') THEN 1
+                           ELSE 0
+                       END as can_edit
+                FROM documents d
+                LEFT JOIN teams t ON t.id = d.team_id
+                LEFT JOIN clients c ON c.id = d.client_id
+                LEFT JOIN projects p ON p.id = d.project_id
+                LEFT JOIN invoices i ON i.id = d.invoice_id
+                LEFT JOIN team_members tm ON tm.team_id = d.team_id AND tm.user_id = ? AND tm.status = 'active'
+                WHERE (
+                    (? = 'active' AND d.archived = 0)
+                    OR (? = 'archived' AND d.archived = 1)
+                    OR ? = 'all'
+                )
+                AND ((d.team_id IS NULL AND d.user_id = ?) OR tm.user_id IS NOT NULL)
+            `;
+            params.push(req.userId);
+
+            for (const filter of filters) {
+                if (req.query[filter]) {
+                    query += ` AND d.${filter} = ?`;
+                    params.push(req.query[filter]);
+                }
+            }
+
+            query += ' ORDER BY d.created_at DESC, d.id DESC';
+
+            const documents = await db.all(query, params);
+            return res.json(documents);
+        } catch (error) {
+            console.error('[DocumentController.index]', error);
+            return res.status(500).json({ error: 'Erro ao listar documentos.' });
+        }
+    },
+
+    async create(req, res) {
+        try {
+            const validationError = validatePayload(req.body);
+            if (validationError) return res.status(400).json({ error: validationError });
+
+            const db = await connectDb();
+            const access = await resolveAccess(db, req.userId, req.body);
+            if (!access.can_view || !access.can_edit) {
+                return res.status(403).json({ error: 'Sem permissao para criar documento neste contexto.' });
+            }
+
+            const teamId = req.body.team_id || access.inferred_team_id || null;
+            const result = await db.run(`
+                INSERT INTO documents (
+                    user_id, team_id, client_id, project_id, invoice_id, transaction_id, project_financial_entry_id,
+                    file_name, file_url, provider, document_type, description, mime_type, size, archived, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+            `, [
+                req.userId,
+                teamId,
+                req.body.client_id || null,
+                req.body.project_id || null,
+                req.body.invoice_id || null,
+                req.body.transaction_id || null,
+                req.body.project_financial_entry_id || null,
+                req.body.file_name.trim(),
+                req.body.file_url.trim(),
+                req.body.provider || 'external',
+                req.body.document_type || 'other',
+                req.body.description || null,
+                req.body.mime_type || null,
+                req.body.size || null
+            ]);
+
+            return res.status(201).json({ id: result.lastID, message: 'Documento cadastrado.' });
+        } catch (error) {
+            console.error('[DocumentController.create]', error);
+            return res.status(500).json({ error: 'Erro ao criar documento.' });
+        }
+    },
+
+    async update(req, res) {
+        try {
+            const validationError = validatePayload(req.body, true);
+            if (validationError) return res.status(400).json({ error: validationError });
+
+            const db = await connectDb();
+            const document = await getDocumentAccess(db, req.params.id, req.userId);
+            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para editar documento.' });
+
+            const nextDocument = {
+                ...document,
+                team_id: Object.prototype.hasOwnProperty.call(req.body, 'team_id') ? req.body.team_id : document.team_id,
+                client_id: Object.prototype.hasOwnProperty.call(req.body, 'client_id') ? req.body.client_id : document.client_id,
+                project_id: Object.prototype.hasOwnProperty.call(req.body, 'project_id') ? req.body.project_id : document.project_id,
+                invoice_id: Object.prototype.hasOwnProperty.call(req.body, 'invoice_id') ? req.body.invoice_id : document.invoice_id,
+                transaction_id: Object.prototype.hasOwnProperty.call(req.body, 'transaction_id') ? req.body.transaction_id : document.transaction_id,
+                project_financial_entry_id: Object.prototype.hasOwnProperty.call(req.body, 'project_financial_entry_id')
+                    ? req.body.project_financial_entry_id
+                    : document.project_financial_entry_id
+            };
+            const nextAccess = await resolveAccess(db, req.userId, nextDocument);
+            if (!nextAccess.can_view || !nextAccess.can_edit) {
+                return res.status(403).json({ error: 'Sem permissao para mover documento para este contexto.' });
+            }
+
+            const nextTeamId = Object.prototype.hasOwnProperty.call(req.body, 'team_id')
+                ? (req.body.team_id || nextAccess.inferred_team_id || null)
+                : (nextAccess.inferred_team_id || document.team_id || null);
+
+            await db.run(`
+                UPDATE documents
+                SET file_name = COALESCE(?, file_name),
+                    file_url = COALESCE(?, file_url),
+                    provider = COALESCE(?, provider),
+                    document_type = COALESCE(?, document_type),
+                    description = COALESCE(?, description),
+                    team_id = ?,
+                    client_id = ?,
+                    project_id = ?,
+                    invoice_id = ?,
+                    transaction_id = ?,
+                    project_financial_entry_id = ?,
+                    mime_type = COALESCE(?, mime_type),
+                    size = COALESCE(?, size),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `, [
+                req.body.file_name === undefined ? null : req.body.file_name.trim(),
+                req.body.file_url === undefined ? null : req.body.file_url.trim(),
+                req.body.provider,
+                req.body.document_type,
+                req.body.description,
+                nextTeamId,
+                nextDocument.client_id || null,
+                nextDocument.project_id || null,
+                nextDocument.invoice_id || null,
+                nextDocument.transaction_id || null,
+                nextDocument.project_financial_entry_id || null,
+                req.body.mime_type,
+                req.body.size,
+                req.params.id
+            ]);
+
+            return res.json({ message: 'Documento atualizado.' });
+        } catch (error) {
+            console.error('[DocumentController.update]', error);
+            return res.status(500).json({ error: 'Erro ao atualizar documento.' });
+        }
+    },
+
+    async archive(req, res) {
+        try {
+            const db = await connectDb();
+            const document = await getDocumentAccess(db, req.params.id, req.userId);
+            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para arquivar documento.' });
+
+            await db.run('UPDATE documents SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+            return res.json({ message: 'Documento arquivado.' });
+        } catch (error) {
+            console.error('[DocumentController.archive]', error);
+            return res.status(500).json({ error: 'Erro ao arquivar documento.' });
+        }
+    },
+
+    async restore(req, res) {
+        try {
+            const db = await connectDb();
+            const document = await getDocumentAccess(db, req.params.id, req.userId);
+            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para restaurar documento.' });
+
+            await db.run('UPDATE documents SET archived = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+            return res.json({ message: 'Documento restaurado.' });
+        } catch (error) {
+            console.error('[DocumentController.restore]', error);
+            return res.status(500).json({ error: 'Erro ao restaurar documento.' });
+        }
+    },
+
+    async destroy(req, res) {
+        return module.exports.archive(req, res);
+    },
+
+    async byProject(req, res) {
+        req.query.project_id = req.params.id;
+        return module.exports.index(req, res);
+    },
+
+    async byClient(req, res) {
+        req.query.client_id = req.params.id;
+        return module.exports.index(req, res);
+    },
+
+    async byInvoice(req, res) {
+        req.query.invoice_id = req.params.id;
+        return module.exports.index(req, res);
+    }
+};

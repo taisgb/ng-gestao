@@ -1,26 +1,16 @@
 const connectDb = require('../config/database');
 const { isDate, isEmail, isNonEmptyString, isNonNegativeMoney, normalizeEmail, toMoney } = require('../utils/validators');
+const {
+    canEditProjectFinancials,
+    canViewProjectFinancials,
+    canEditTeamResource,
+    getProjectAccess: getSharedProjectAccess
+} = require('../utils/permissions');
 
 const DEFAULT_STATUSES = ['pendente', 'aprovado', 'em andamento', 'concluído', 'garantia'];
 
 async function getProjectAccess(db, projectId, userId) {
-    return db.get(`
-        SELECT 
-            p.*,
-            c.name as client_name,
-            CASE 
-                WHEN p.user_id = ? THEN 'owner'
-                WHEN pm.user_id IS NOT NULL THEN pm.role
-                ELSE NULL
-            END as access_role
-        FROM projects p
-        JOIN clients c ON p.client_id = c.id
-        LEFT JOIN project_members pm 
-            ON pm.project_id = p.id AND pm.user_id = ?
-        WHERE p.id = ?
-          AND p.archived = 0
-          AND (p.user_id = ? OR pm.user_id IS NOT NULL)
-    `, [userId, userId, projectId, userId]);
+    return getSharedProjectAccess(db, userId, projectId);
 }
 
 async function ensureDefaultStatuses(db, projectId) {
@@ -50,8 +40,15 @@ async function getProjectMembers(db, projectId) {
         FROM project_members pm
         JOIN users u ON u.id = pm.user_id
         WHERE pm.project_id = ?
+        UNION
+        SELECT u.id, u.name, u.email, tm.role, tm.created_at
+        FROM projects p
+        JOIN clients c ON c.id = p.client_id
+        JOIN team_members tm ON tm.team_id = COALESCE(p.team_id, c.team_id) AND tm.status = 'active'
+        JOIN users u ON u.id = tm.user_id
+        WHERE p.id = ?
         ORDER BY 4 DESC, 2 ASC
-    `, [projectId, projectId]);
+    `, [projectId, projectId, projectId]);
 }
 
 async function ensureFinancialShares(db, projectId) {
@@ -85,13 +82,14 @@ module.exports = {
                 return res.status(400).json({ error: 'Valor do projeto invalido.' });
             }
 
-            const client = await db.get(
-                'SELECT id FROM clients WHERE id = ? AND user_id = ? AND archived = 0',
-                [client_id, req.userId]
-            );
+            const client = await db.get('SELECT id, user_id, team_id FROM clients WHERE id = ? AND archived = 0', [client_id]);
 
-            if (!client) {
+            if (!client || (client.user_id !== req.userId && !client.team_id)) {
                 return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+            }
+
+            if (client.team_id && !await canEditTeamResource(db, req.userId, client.team_id)) {
+                return res.status(403).json({ error: 'Sem permissao para criar projetos neste time.' });
             }
 
             const user = await db.get('SELECT plan FROM users WHERE id = ?', [req.userId]);
@@ -103,9 +101,9 @@ module.exports = {
             }
 
             const result = await db.run(`
-                INSERT INTO projects (client_id, title, description, base_value, payment_type, deadline, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [client_id, title.trim(), description || null, toMoney(base_value), payment_type || null, deadline || null, req.userId]);
+                INSERT INTO projects (client_id, team_id, title, description, base_value, payment_type, deadline, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [client_id, client.team_id || null, title.trim(), description || null, toMoney(base_value), payment_type || null, deadline || null, req.userId]);
 
             await ensureDefaultStatuses(db, result.lastID);
 
@@ -118,26 +116,48 @@ module.exports = {
 
     async index(req, res) {
         try {
+            const status = ['active', 'archived', 'all'].includes(req.query.status)
+                ? req.query.status
+                : 'active';
             const db = await connectDb();
             const projects = await db.all(`
                 SELECT 
-                    projects.*, 
+                    p.*, 
                     clients.name as client_name,
+                    tm.role as team_role,
                     CASE 
-                        WHEN projects.user_id = ? THEN 'owner'
-                        ELSE project_members.role
+                        WHEN p.user_id = ? THEN 'owner'
+                        WHEN project_members.user_id IS NOT NULL THEN project_members.role
+                        WHEN tm.user_id IS NOT NULL THEN tm.role
+                        ELSE NULL
                     END as access_role
-                FROM projects
-                JOIN clients ON projects.client_id = clients.id
+                FROM projects p
+                JOIN clients ON p.client_id = clients.id
                 LEFT JOIN project_members 
-                    ON project_members.project_id = projects.id 
+                    ON project_members.project_id = p.id 
                     AND project_members.user_id = ?
-                WHERE projects.archived = 0 
-                  AND (projects.user_id = ? OR project_members.user_id IS NOT NULL)
-                ORDER BY projects.id DESC
-            `, [req.userId, req.userId, req.userId]);
+                LEFT JOIN team_members tm
+                    ON tm.team_id = COALESCE(p.team_id, clients.team_id)
+                    AND tm.user_id = ?
+                    AND tm.status = 'active'
+                WHERE (
+                    (? = 'active' AND p.archived = 0)
+                    OR (? = 'archived' AND p.archived = 1)
+                    OR ? = 'all'
+                )
+                  AND (p.user_id = ? OR project_members.user_id IS NOT NULL OR tm.user_id IS NOT NULL)
+                ORDER BY p.archived ASC, p.id DESC
+            `, [req.userId, req.userId, req.userId, status, status, status, req.userId]);
 
-            return res.json(projects);
+            return res.json(projects.map(project => {
+                const canSeeFinancials = ['owner', 'admin', 'gestor'].includes(project.access_role);
+                return {
+                    ...project,
+                    can_view_financials: canSeeFinancials,
+                    base_value: canSeeFinancials ? project.base_value : null,
+                    amount_paid: canSeeFinancials ? project.amount_paid : null
+                };
+            }));
         } catch (error) {
             console.error('[ProjectController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar projetos.' });
@@ -152,6 +172,7 @@ module.exports = {
             const project = await getProjectAccess(db, id, req.userId);
             if (!project) return res.status(404).json({ error: 'Projeto nao encontrado.' });
 
+            const canSeeFinancials = await canViewProjectFinancials(db, req.userId, id);
             const expenses = await db.get(`
                 SELECT SUM(amount) as total FROM transactions 
                 WHERE project_id = ? AND type = 'Despesa' AND user_id = ?
@@ -159,13 +180,24 @@ module.exports = {
 
             const extraExpenses = expenses.total || 0;
             const totalProjectValue = project.base_value + extraExpenses;
-
-            return res.json({
+            const response = {
                 ...project,
-                extra_expenses: extraExpenses,
-                total_value: totalProjectValue,
-                remaining_balance: totalProjectValue - project.amount_paid
-            });
+                can_view_financials: canSeeFinancials,
+                can_edit_financials: await canEditProjectFinancials(db, req.userId, id),
+                extra_expenses: canSeeFinancials ? extraExpenses : null,
+                total_value: canSeeFinancials ? totalProjectValue : null,
+                remaining_balance: canSeeFinancials ? totalProjectValue - project.amount_paid : null
+            };
+
+            if (!canSeeFinancials) {
+                response.base_value = null;
+                response.amount_paid = null;
+                response.payment_type = null;
+                response.payment_status = null;
+                response.financial_notice = 'Voce visualiza apenas sua propria parte financeira neste projeto.';
+            }
+
+            return res.json(response);
         } catch (error) {
             console.error('[ProjectController.show]', error);
             return res.status(500).json({ error: 'Erro ao buscar detalhes.' });
@@ -182,8 +214,14 @@ module.exports = {
             if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
 
             const requestedFields = Object.keys(req.body);
-            if (project.access_role !== 'owner' && requestedFields.some(field => field !== 'status')) {
-                return res.status(403).json({ error: 'Colaboradores podem alterar apenas o status do projeto.' });
+            const canEditFinancials = await canEditProjectFinancials(db, req.userId, id);
+            const sensitiveFields = ['base_value', 'payment_type', 'payment_status', 'amount_paid'];
+            if (!canEditFinancials && requestedFields.some(field => sensitiveFields.includes(field))) {
+                return res.status(403).json({ error: 'Sem permissao para editar valores financeiros do projeto.' });
+            }
+
+            if (!['owner', 'admin', 'gestor'].includes(project.access_role) && requestedFields.some(field => field !== 'status')) {
+                return res.status(403).json({ error: 'Membros podem alterar apenas o status operacional do projeto.' });
             }
 
             if (title !== undefined && !isNonEmptyString(title, 160)) {
@@ -429,6 +467,7 @@ module.exports = {
             if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
 
             await ensureFinancialShares(db, id);
+            const canViewGlobal = await canViewProjectFinancials(db, req.userId, id);
 
             const rows = await db.all(`
                 SELECT 
@@ -447,26 +486,29 @@ module.exports = {
                 LEFT JOIN project_members pm 
                     ON pm.project_id = pfs.project_id AND pm.user_id = pfs.user_id
                 WHERE pfs.project_id = ?
+                  AND (? = 1 OR pfs.user_id = ?)
                 ORDER BY role DESC, u.name ASC
-            `, [id]);
+            `, [id, canViewGlobal ? 1 : 0, req.userId]);
 
             const totalValue = Number(project.base_value || 0);
             const allocationTotal = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            const canEditFinancials = await canEditProjectFinancials(db, req.userId, id);
 
             return res.json({
-                total_value: totalValue,
-                allocation_total: allocationTotal,
-                unallocated_amount: totalValue - allocationTotal,
-                can_edit_total: project.access_role === 'owner',
-                can_edit_all_shares: project.access_role === 'owner',
+                total_value: canViewGlobal ? totalValue : null,
+                allocation_total: canViewGlobal ? allocationTotal : null,
+                unallocated_amount: canViewGlobal ? totalValue - allocationTotal : null,
+                can_view_global: canViewGlobal,
+                can_edit_total: canEditFinancials,
+                can_edit_all_shares: canEditFinancials,
                 shares: rows.map(row => ({
                     user_id: row.user_id,
                     name: row.name,
                     email: row.email,
                     role: row.role,
                     amount: Number(row.amount || 0),
-                    percentage: totalValue > 0 ? (Number(row.amount || 0) / totalValue) * 100 : 0,
-                    can_edit: project.access_role === 'owner' || row.user_id === req.userId,
+                    percentage: canViewGlobal && totalValue > 0 ? (Number(row.amount || 0) / totalValue) * 100 : null,
+                    can_edit: canEditFinancials,
                     updated_at: row.updated_at
                 }))
             });
@@ -484,14 +526,15 @@ module.exports = {
 
             const project = await getProjectAccess(db, id, req.userId);
             if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            const canEditFinancials = await canEditProjectFinancials(db, req.userId, id);
+
+            if (!canEditFinancials) {
+                return res.status(403).json({ error: 'Sem permissao para editar a divisao financeira do projeto.' });
+            }
 
             await ensureFinancialShares(db, id);
 
             if (total_value !== undefined) {
-                if (project.access_role !== 'owner') {
-                    return res.status(403).json({ error: 'Apenas o dono pode alterar o valor total do projeto.' });
-                }
-
                 if (!isNonNegativeMoney(total_value)) {
                     return res.status(400).json({ error: 'Valor total invalido.' });
                 }
@@ -508,17 +551,18 @@ module.exports = {
                         return res.status(400).json({ error: 'Participante ou valor invalido.' });
                     }
 
-                    if (project.access_role !== 'owner' && userId !== req.userId) {
-                        return res.status(403).json({ error: 'Voce so pode alterar a sua propria parte.' });
-                    }
-
                     const member = await db.get(`
                         SELECT p.user_id
                         FROM projects p
                         LEFT JOIN project_members pm 
                             ON pm.project_id = p.id AND pm.user_id = ?
-                        WHERE p.id = ? AND (p.user_id = ? OR pm.user_id IS NOT NULL)
-                    `, [userId, id, userId]);
+                        LEFT JOIN clients c ON c.id = p.client_id
+                        LEFT JOIN team_members tm
+                            ON tm.team_id = COALESCE(p.team_id, c.team_id)
+                            AND tm.user_id = ?
+                            AND tm.status = 'active'
+                        WHERE p.id = ? AND (p.user_id = ? OR pm.user_id IS NOT NULL OR tm.user_id IS NOT NULL)
+                    `, [userId, userId, id, userId]);
 
                     if (!member) {
                         return res.status(400).json({ error: 'Participante invalido para este projeto.' });
@@ -541,17 +585,48 @@ module.exports = {
         }
     },
 
-    async destroy(req, res) {
+    async archive(req, res) {
         try {
             const { id } = req.params;
             const db = await connectDb();
-            const result = await db.run('UPDATE projects SET archived = 1 WHERE id = ? AND user_id = ?', [id, req.userId]);
+            const project = await getProjectAccess(db, id, req.userId);
 
-            if (result.changes === 0) return res.status(404).json({ error: 'Projeto nao encontrado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!['owner', 'admin', 'gestor'].includes(project.access_role)) {
+                return res.status(403).json({ error: 'Sem permissao para arquivar este projeto.' });
+            }
+
+            await db.run(
+                'UPDATE projects SET archived = 1, archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP) WHERE id = ?',
+                [id]
+            );
             return res.json({ message: 'Projeto arquivado.' });
         } catch (error) {
-            console.error('[ProjectController.destroy]', error);
+            console.error('[ProjectController.archive]', error);
             return res.status(500).json({ error: 'Erro ao arquivar.' });
         }
+    },
+
+    async restore(req, res) {
+        try {
+            const { id } = req.params;
+            const db = await connectDb();
+            const project = await getProjectAccess(db, id, req.userId);
+
+            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!['owner', 'admin', 'gestor'].includes(project.access_role)) {
+                return res.status(403).json({ error: 'Sem permissao para restaurar este projeto.' });
+            }
+
+            await db.run('UPDATE projects SET archived = 0, archived_at = NULL WHERE id = ?', [id]);
+            return res.json({ message: 'Projeto restaurado.' });
+        } catch (error) {
+            console.error('[ProjectController.restore]', error);
+            return res.status(500).json({ error: 'Erro ao restaurar projeto.' });
+        }
+    },
+
+    async destroy(req, res) {
+        return module.exports.archive(req, res);
     }
 };

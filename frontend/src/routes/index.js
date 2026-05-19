@@ -19,6 +19,8 @@ import Admin from '../pages/Admin';
 import Register from '../pages/Register';
 import NotFound from '../pages/NotFound';
 import Invoices from '../pages/Invoices';
+import Teams from '../pages/Teams';
+import Documents from '../pages/Documents';
 
 export default function AppRoutes() {
   return (
@@ -31,12 +33,14 @@ export default function AppRoutes() {
           <Route element={<DefaultLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/clientes" element={<Clients />} />
+            <Route path="/times" element={<Teams />} />
             <Route path="/upgrade" element={<Upgrade />} />
             <Route path="/projetos" element={<Projects />} />
             <Route path="/projetos/:id" element={<ProjectDetails />} />
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/financeiro" element={<Finance />} />
             <Route path="/notas-fiscais" element={<Invoices />} />
+            <Route path="/documentos" element={<Documents />} />
             <Route path="/financeiro-pessoal" element={<PersonalFinance />} />
             <Route path="/servicos" element={<Services />} />
             <Route path="/perfil" element={<Profile />} />

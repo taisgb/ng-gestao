@@ -65,6 +65,82 @@ $line: #ece7df;
     }
   }
 
+  .fiscal-card {
+    background: #fff;
+    border: 1px solid $line;
+    border-left: 5px solid $leaf-green;
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 16px;
+
+    &.warning { border-left-color: #d4a373; }
+    &.danger,
+    &.exceeded { border-left-color: #c24141; }
+
+    form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 150px 150px 180px auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      color: $earth-brown;
+      font-size: 1rem;
+    }
+
+    p {
+      color: #777;
+      font-size: 0.88rem;
+      margin-top: 4px;
+    }
+
+    select,
+    input[type="date"] {
+      border: 1px solid $line;
+      border-radius: 8px;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #777;
+      font-size: 0.84rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      background: $ink-blue;
+      color: #fff;
+      font-weight: 700;
+      padding: 10px 12px;
+    }
+
+    .limit-progress {
+      height: 10px;
+      background: $sand-bg;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 10px;
+
+      div {
+        height: 100%;
+        background: $leaf-green;
+      }
+    }
+
+    strong {
+      color: #c24141;
+      display: block;
+      margin-top: 8px;
+    }
+  }
+
   .invoice-form-panel {
     background: #fff;
     border: 1px solid $line;
@@ -98,6 +174,9 @@ $line: #ece7df;
 
   .filter-row {
     margin-bottom: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 
     select {
       border: 1px solid $line;
@@ -111,6 +190,113 @@ $line: #ece7df;
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .invoice-documents-panel {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 16px;
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 12px;
+
+      h2 {
+        color: $earth-brown;
+        font-size: 1rem;
+      }
+
+      p {
+        color: #777;
+        font-size: 0.86rem;
+        margin-top: 4px;
+      }
+
+      > button {
+        border: 1px solid $line;
+        border-radius: 8px;
+        background: $sand-bg;
+        color: $earth-brown;
+        padding: 8px 10px;
+        align-self: flex-start;
+      }
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr) 110px 130px minmax(120px, 1fr) auto;
+      gap: 8px;
+      margin-bottom: 12px;
+
+      input,
+      select {
+        min-width: 0;
+        border: 1px solid $line;
+        border-radius: 8px;
+        padding: 9px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        background: $leaf-green;
+        color: #fff;
+        font-weight: 700;
+        padding: 0 12px;
+      }
+    }
+  }
+
+  .invoice-documents-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    article {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-top: 1px solid $sand-bg;
+      padding-top: 10px;
+
+      &.archived {
+        opacity: 0.72;
+      }
+
+      strong {
+        color: $earth-brown;
+        display: block;
+        font-size: 0.9rem;
+      }
+
+      span {
+        color: #777;
+        font-size: 0.8rem;
+      }
+
+      div:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+
+      a,
+      button {
+        border: 1px solid $line;
+        border-radius: 8px;
+        background: $sand-bg;
+        color: $ink-blue;
+        padding: 7px 9px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-decoration: none;
+      }
+    }
   }
 
   .invoice-card {
@@ -135,7 +321,7 @@ $line: #ece7df;
 
   .invoice-actions {
     display: grid;
-    grid-template-columns: 130px 130px auto;
+    grid-template-columns: 130px 130px auto auto;
     gap: 8px;
     align-items: center;
 
@@ -170,7 +356,9 @@ $line: #ece7df;
     }
 
     .invoice-summary,
+    .fiscal-card form,
     .invoice-form-panel form,
+    .invoice-documents-panel form,
     .invoice-card,
     .invoice-actions {
       grid-template-columns: 1fr;
@@ -182,9 +370,20 @@ $line: #ece7df;
     }
 
     .invoice-form-panel form button,
+    .invoice-documents-panel form button,
     .page-header button {
       min-height: 40px;
       width: 100%;
+    }
+
+    .invoice-documents-panel header,
+    .invoice-documents-list article {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .invoice-documents-list article div:last-child {
+      justify-content: flex-start;
     }
   }
 }

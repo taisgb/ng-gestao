@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../../services/api';
 import './styles.scss';
 
@@ -8,9 +8,19 @@ export default function ModalClient({ isOpen, onClose, onSuccess }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [document, setDocument] = useState('');
+  const [scope, setScope] = useState('individual');
+  const [teamId, setTeamId] = useState('');
+  const [teams, setTeams] = useState([]);
   
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    api.get('/teams')
+      .then(response => setTeams(response.data))
+      .catch(() => setTeams([]));
+  }, [isOpen]);
 
   // Se o modal não estiver aberto, não renderiza nada
   if (!isOpen) return null;
@@ -26,7 +36,8 @@ export default function ModalClient({ isOpen, onClose, onSuccess }) {
         contact_name: contactName,
         email,
         phone,
-        document
+        document,
+        team_id: scope === 'team' ? teamId : null
       });
 
       // Limpa o formulário após o sucesso
@@ -35,6 +46,8 @@ export default function ModalClient({ isOpen, onClose, onSuccess }) {
       setEmail('');
       setPhone('');
       setDocument('');
+      setScope('individual');
+      setTeamId('');
       
       onSuccess(); // Atualiza a lista na página principal
       onClose();   // Fecha o modal
@@ -105,6 +118,33 @@ export default function ModalClient({ isOpen, onClose, onSuccess }) {
               onChange={(e) => setDocument(e.target.value)}
             />
           </div>
+
+          <div className="input-group">
+            <label htmlFor="scope">Tipo de cliente</label>
+            <select
+              id="scope"
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+            >
+              <option value="individual">Cliente individual</option>
+              <option value="team">Cliente compartilhado com time</option>
+            </select>
+          </div>
+
+          {scope === 'team' && (
+            <div className="input-group">
+              <label htmlFor="teamId">Time</label>
+              <select
+                id="teamId"
+                value={teamId}
+                onChange={(e) => setTeamId(e.target.value)}
+                required
+              >
+                <option value="">Selecione um time</option>
+                {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+              </select>
+            </div>
+          )}
 
           {error && <div className="error-message">{error}</div>}
 

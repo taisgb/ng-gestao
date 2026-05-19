@@ -3,17 +3,69 @@ import { useParams } from 'react-router-dom';
 import api from '../../services/api';
 import './styles.scss';
 
+const ENTRY_TYPES = [
+  { value: 'income', label: 'Receita' },
+  { value: 'expense', label: 'Despesa' },
+  { value: 'reimbursement', label: 'Reembolso' },
+  { value: 'received_payment', label: 'Pagamento recebido' },
+  { value: 'scope_adjustment', label: 'Ajuste de escopo' }
+];
+
+const ENTRY_STATUSES = [
+  { value: 'pending', label: 'Pendente' },
+  { value: 'paid', label: 'Pago/recebido' },
+  { value: 'reimbursed', label: 'Reembolsado' },
+  { value: 'canceled', label: 'Cancelado' }
+];
+
+const DOCUMENT_TYPES = [
+  ['contract', 'Contrato'],
+  ['briefing', 'Briefing'],
+  ['invoice', 'Nota fiscal'],
+  ['receipt', 'Comprovante'],
+  ['artwork', 'Arte'],
+  ['folder', 'Pasta do Drive'],
+  ['other', 'Outro']
+];
+
 export default function ProjectDetails() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [finance, setFinance] = useState(null);
+  const [projectFinanceSummary, setProjectFinanceSummary] = useState(null);
+  const [projectEntries, setProjectEntries] = useState([]);
+  const [canEditProjectEntries, setCanEditProjectEntries] = useState(false);
+  const [entryForm, setEntryForm] = useState({
+    type: 'income',
+    description: '',
+    category: '',
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    status: 'pending',
+    payment_method: '',
+    affects_project_total: false,
+    affects_my_financial: false,
+    reimbursable: false,
+    notes: '',
+    document_file_name: '',
+    document_file_url: '',
+    document_type: 'receipt'
+  });
   const [totalValueDraft, setTotalValueDraft] = useState('');
   const [shareDrafts, setShareDrafts] = useState({});
   const [statuses, setStatuses] = useState([]);
   const [members, setMembers] = useState([]);
   const [notes, setNotes] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [documentForm, setDocumentForm] = useState({
+    file_name: '',
+    file_url: '',
+    provider: 'drive',
+    document_type: 'folder',
+    description: ''
+  });
   const [inviteEmail, setInviteEmail] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [newNote, setNewNote] = useState('');
@@ -22,14 +74,17 @@ export default function ProjectDetails() {
 
   const loadProjectData = useCallback(async () => {
     try {
-      const [projRes, tasksRes, transRes, financeRes, statusesRes, membersRes, notesRes] = await Promise.all([
+      const [projRes, tasksRes, transRes, financeRes, statusesRes, membersRes, notesRes, entriesRes, summaryRes, docsRes] = await Promise.all([
         api.get(`/projects/${id}`),
         api.get(`/tasks?project_id=${id}`),
         api.get(`/transactions?project_id=${id}`),
         api.get(`/projects/${id}/finance`),
         api.get(`/projects/${id}/statuses`),
         api.get(`/projects/${id}/members`),
-        api.get(`/projects/${id}/notes`)
+        api.get(`/projects/${id}/notes`),
+        api.get(`/projects/${id}/financial-entries`).catch(() => ({ data: { entries: [], can_edit_global: false } })),
+        api.get(`/projects/${id}/finance-summary`).catch(() => ({ data: null })),
+        api.get(`/projects/${id}/documents?status=all`).catch(() => ({ data: [] }))
       ]);
 
       setProject(projRes.data);
@@ -46,6 +101,10 @@ export default function ProjectDetails() {
       setStatuses(statusesRes.data);
       setMembers(membersRes.data);
       setNotes(notesRes.data);
+      setProjectEntries(entriesRes.data.entries || []);
+      setCanEditProjectEntries(Boolean(entriesRes.data.can_edit_global));
+      setProjectFinanceSummary(summaryRes.data);
+      setDocuments(docsRes.data || []);
     } catch (err) {
       console.error('Erro ao carregar detalhes do projeto', err);
     } finally {
@@ -135,6 +194,115 @@ export default function ProjectDetails() {
     }
   }
 
+  async function handleCreateEntry(e) {
+    e.preventDefault();
+    setFeedback('');
+
+    try {
+      const entryResponse = await api.post(`/projects/${id}/financial-entries`, {
+        ...entryForm,
+        amount: Number(entryForm.amount || 0)
+      });
+      if (entryForm.document_file_name && entryForm.document_file_url) {
+        await api.post('/documents', {
+          file_name: entryForm.document_file_name,
+          file_url: entryForm.document_file_url,
+          provider: 'drive',
+          document_type: entryForm.document_type || 'receipt',
+          project_id: id,
+          project_financial_entry_id: entryResponse.data.id,
+          description: `Documento do lancamento: ${entryForm.description}`
+        });
+      }
+      setEntryForm({
+        type: 'income',
+        description: '',
+        category: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        status: 'pending',
+        payment_method: '',
+        affects_project_total: false,
+        affects_my_financial: false,
+        reimbursable: false,
+        notes: '',
+        document_file_name: '',
+        document_file_url: '',
+        document_type: 'receipt'
+      });
+      await loadProjectData();
+      setFeedback('Lancamento do projeto criado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao criar lancamento do projeto.');
+    }
+  }
+
+  async function handleEntryStatus(entry, status) {
+    try {
+      await api.patch(`/projects/${id}/financial-entries/${entry.id}/status`, { status });
+      await loadProjectData();
+      setFeedback('Status do lancamento atualizado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao atualizar status.');
+    }
+  }
+
+  async function handleArchiveEntry(entry) {
+    try {
+      await api.delete(`/projects/${id}/financial-entries/${entry.id}`);
+      await loadProjectData();
+      setFeedback('Lancamento arquivado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar lancamento.');
+    }
+  }
+
+  async function handleCreateDocument(e) {
+    e.preventDefault();
+    setFeedback('');
+
+    try {
+      await api.post('/documents', {
+        ...documentForm,
+        project_id: id
+      });
+      setDocumentForm({
+        file_name: '',
+        file_url: '',
+        provider: 'drive',
+        document_type: 'folder',
+        description: ''
+      });
+      await loadProjectData();
+      setFeedback('Documento do projeto cadastrado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao cadastrar documento do projeto.');
+    }
+  }
+
+  async function handleArchiveDocument(document) {
+    const confirmed = window.confirm('Deseja arquivar este documento? Ele podera ser restaurado depois.');
+    if (!confirmed) return;
+
+    try {
+      await api.patch(`/documents/${document.id}/archive`);
+      await loadProjectData();
+      setFeedback('Documento arquivado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar documento.');
+    }
+  }
+
+  async function handleRestoreDocument(document) {
+    try {
+      await api.patch(`/documents/${document.id}/restore`);
+      await loadProjectData();
+      setFeedback('Documento restaurado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar documento.');
+    }
+  }
+
   if (loading) return <div className="loading">Carregando detalhes...</div>;
   if (!project) return <div className="error">Projeto nao encontrado.</div>;
 
@@ -205,7 +373,7 @@ export default function ProjectDetails() {
                 <div key={share.user_id} className="share-row">
                   <div>
                     <strong>{share.name}</strong>
-                    <span>{share.role === 'owner' ? 'Dono' : 'Colaborador'} - {share.percentage.toFixed(1)}%</span>
+                    <span>{share.role === 'owner' ? 'Dono' : 'Colaborador'}{share.percentage !== null ? ` - ${Number(share.percentage || 0).toFixed(1)}%` : ''}</span>
                   </div>
                   <input
                     type="number"
@@ -225,6 +393,138 @@ export default function ProjectDetails() {
           </form>
         </section>
       )}
+
+      <section className="project-financial-entries">
+        <div className="split-header">
+          <div>
+            <h2>Receitas e Despesas do Projeto</h2>
+            {!project.can_view_financials && <p>Voce visualiza apenas sua propria parte financeira neste projeto.</p>}
+          </div>
+        </div>
+
+        {projectFinanceSummary && (
+          <div className="entry-summary-grid">
+            <div><span>Valor do contrato</span><strong>{formatCurrency(projectFinanceSummary.base_contract_value)}</strong></div>
+            <div><span>Receitas adicionais</span><strong>{formatCurrency(projectFinanceSummary.additional_income)}</strong></div>
+            <div><span>Valor atualizado</span><strong>{formatCurrency(projectFinanceSummary.updated_total_value)}</strong></div>
+            <div><span>Recebido</span><strong>{formatCurrency(projectFinanceSummary.total_received)}</strong></div>
+            <div><span>Pendente</span><strong>{formatCurrency(projectFinanceSummary.total_pending)}</strong></div>
+            <div><span>Despesas</span><strong>{formatCurrency(projectFinanceSummary.total_expenses)}</strong></div>
+            <div><span>A reembolsar</span><strong>{formatCurrency(projectFinanceSummary.reimbursable_expenses)}</strong></div>
+            <div><span>Saldo liquido</span><strong>{formatCurrency(projectFinanceSummary.estimated_net_balance)}</strong></div>
+          </div>
+        )}
+
+        {canEditProjectEntries && (
+          <form onSubmit={handleCreateEntry} className="entry-form">
+            <select value={entryForm.type} onChange={e => setEntryForm({ ...entryForm, type: e.target.value })}>
+              {ENTRY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </select>
+            <input value={entryForm.description} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} placeholder="Descricao" required />
+            <input value={entryForm.category} onChange={e => setEntryForm({ ...entryForm, category: e.target.value })} placeholder="Categoria" required />
+            <input type="number" step="0.01" value={entryForm.amount} onChange={e => setEntryForm({ ...entryForm, amount: e.target.value })} placeholder="Valor" required />
+            <input type="date" value={entryForm.date} onChange={e => setEntryForm({ ...entryForm, date: e.target.value })} required />
+            <select value={entryForm.status} onChange={e => setEntryForm({ ...entryForm, status: e.target.value })}>
+              {ENTRY_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+            </select>
+            <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
+            <label><input type="checkbox" checked={entryForm.affects_project_total} onChange={e => setEntryForm({ ...entryForm, affects_project_total: e.target.checked })} /> Soma no projeto</label>
+            <label><input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked })} /> Reembolsavel</label>
+            <label><input type="checkbox" checked={entryForm.affects_my_financial} onChange={e => setEntryForm({ ...entryForm, affects_my_financial: e.target.checked })} /> Meu financeiro</label>
+            <textarea value={entryForm.notes} onChange={e => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="Observacoes" />
+            <input value={entryForm.document_file_name} onChange={e => setEntryForm({ ...entryForm, document_file_name: e.target.value })} placeholder="Nome do comprovante" />
+            <input value={entryForm.document_file_url} onChange={e => setEntryForm({ ...entryForm, document_file_url: e.target.value })} placeholder="Link do comprovante" />
+            <select value={entryForm.document_type} onChange={e => setEntryForm({ ...entryForm, document_type: e.target.value })}>
+              <option value="receipt">Comprovante</option>
+              <option value="invoice">Nota fiscal</option>
+              <option value="boleto">Boleto</option>
+              <option value="other">Outro</option>
+            </select>
+            <button type="submit">Adicionar lancamento</button>
+          </form>
+        )}
+
+        <div className="entries-table">
+          {projectEntries.map(entry => (
+            <article key={entry.id}>
+              <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
+              <strong>{ENTRY_TYPES.find(type => type.value === entry.type)?.label || entry.type}</strong>
+              <span>{entry.description}</span>
+              <span>{entry.category}</span>
+              <span>{entry.status}</span>
+              <strong>{formatCurrency(entry.amount)}</strong>
+              <span>{entry.affects_project_total ? 'Sim' : 'Nao'}</span>
+              <span>{entry.reimbursable ? 'Sim' : 'Nao'}</span>
+              {canEditProjectEntries && (
+                <div>
+                  <button onClick={() => handleEntryStatus(entry, entry.type === 'expense' ? 'paid' : 'paid')}>Pago</button>
+                  <button onClick={() => handleEntryStatus(entry, 'reimbursed')}>Reembolsado</button>
+                  <button onClick={() => handleEntryStatus(entry, 'canceled')}>Cancelar</button>
+                  <button onClick={() => handleArchiveEntry(entry)}>Arquivar</button>
+                </div>
+              )}
+            </article>
+          ))}
+          {projectEntries.length === 0 && <p className="empty">Sem lancamentos do projeto.</p>}
+        </div>
+      </section>
+
+      <section className="project-documents-section">
+        <div className="split-header">
+          <div>
+            <h2>Documentos do Projeto</h2>
+            <p>Contratos, briefings, comprovantes, NFs e pastas externas vinculadas a este projeto.</p>
+          </div>
+        </div>
+
+        {canEditProjectEntries && (
+          <form onSubmit={handleCreateDocument} className="document-inline-form">
+            <input
+              value={documentForm.file_name}
+              onChange={e => setDocumentForm({ ...documentForm, file_name: e.target.value })}
+              placeholder="Nome do documento"
+              required
+            />
+            <input
+              value={documentForm.file_url}
+              onChange={e => setDocumentForm({ ...documentForm, file_url: e.target.value })}
+              placeholder="https://..."
+              required
+            />
+            <select value={documentForm.provider} onChange={e => setDocumentForm({ ...documentForm, provider: e.target.value })}>
+              <option value="drive">Drive</option>
+              <option value="external">Externo</option>
+              <option value="other">Outro</option>
+            </select>
+            <select value={documentForm.document_type} onChange={e => setDocumentForm({ ...documentForm, document_type: e.target.value })}>
+              {DOCUMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <input
+              value={documentForm.description}
+              onChange={e => setDocumentForm({ ...documentForm, description: e.target.value })}
+              placeholder="Descricao opcional"
+            />
+            <button type="submit">Adicionar documento</button>
+          </form>
+        )}
+
+        <div className="documents-mini-list">
+          {documents.map(document => (
+            <article key={document.id} className={document.archived === 1 ? 'archived' : ''}>
+              <div>
+                <strong>{document.file_name}</strong>
+                <span>{document.document_type} - {document.provider}{document.archived === 1 ? ' - Arquivado' : ''}</span>
+              </div>
+              <div>
+                <a href={document.file_url} target="_blank" rel="noreferrer">Abrir</a>
+                {document.can_edit && document.archived !== 1 && <button onClick={() => handleArchiveDocument(document)}>Arquivar</button>}
+                {document.can_edit && document.archived === 1 && <button onClick={() => handleRestoreDocument(document)}>Restaurar</button>}
+              </div>
+            </article>
+          ))}
+          {documents.length === 0 && <p className="empty">Nenhum documento vinculado.</p>}
+        </div>
+      </section>
 
       <section className="collaboration-panel">
         <div className="panel-section">

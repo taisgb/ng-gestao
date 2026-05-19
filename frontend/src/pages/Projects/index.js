@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,23 +10,53 @@ export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [feedback, setFeedback] = useState('');
 
-  async function loadProjects() {
+  const loadProjects = useCallback(async (status = statusFilter) => {
     try {
-      const response = await api.get('/projects');
+      const response = await api.get(`/projects?status=${status}`);
       setProjects(response.data);
     } catch (err) {
-      console.error("Erro ao carregar projetos", err);
+      setFeedback(err.response?.data?.error || 'Erro ao carregar projetos.');
     } finally {
       setLoading(false);
     }
-  }
+  }, [statusFilter]);
 
   useEffect(() => {
-    loadProjects();
-  }, []);
+    loadProjects(statusFilter);
+  }, [loadProjects, statusFilter]);
 
-  const isLimitReached = user?.plan === 'free' && projects.length >= 5;
+  const activeProjectsCount = projects.filter(project => project.archived !== 1).length;
+  const isLimitReached = user?.plan === 'free' && activeProjectsCount >= 5;
+
+  async function handleArchive(project) {
+    const confirmed = window.confirm('Deseja arquivar este projeto? Ele saira da lista principal, mas podera ser restaurado depois.');
+    if (!confirmed) return;
+
+    try {
+      await api.patch(`/projects/${project.id}/archive`);
+      await loadProjects();
+      setFeedback('Projeto arquivado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar projeto.');
+    }
+  }
+
+  async function handleRestore(project) {
+    try {
+      await api.patch(`/projects/${project.id}/restore`);
+      await loadProjects();
+      setFeedback('Projeto restaurado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar projeto.');
+    }
+  }
+
+  function canArchiveOrRestore(project) {
+    return ['owner', 'admin', 'gestor'].includes(project.access_role);
+  }
 
   return (
     <div className="projects-container">
@@ -37,7 +67,10 @@ export default function Projects() {
       />
 
       <header className="page-header">
-        <h1>Projetos Ativos</h1>
+        <div>
+          <h1>Projetos</h1>
+          <p>{projects.length} projeto{projects.length === 1 ? '' : 's'} em {statusFilter === 'active' ? 'ativos' : statusFilter === 'archived' ? 'arquivados' : 'todos'}</p>
+        </div>
         <button 
           className={`btn-add ${isLimitReached ? 'disabled' : ''}`}
           onClick={() => isLimitReached 
@@ -48,6 +81,25 @@ export default function Projects() {
           + Novo Projeto
         </button>
       </header>
+
+      {feedback && <div className="feedback-message">{feedback}</div>}
+
+      <div className="project-tabs">
+        {[
+          ['active', 'Ativos'],
+          ['archived', 'Arquivados'],
+          ['all', 'Todos']
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={statusFilter === value ? 'active' : ''}
+            onClick={() => setStatusFilter(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Alerta de consistência com a página de Clientes */}
       {isLimitReached && (
@@ -63,17 +115,18 @@ export default function Projects() {
         <div className="projects-list">
           {projects.length > 0 ? (
             projects.map(project => (
-              <div key={project.id} className="project-card">
+              <div key={project.id} className={`project-card ${project.archived === 1 ? 'archived' : ''}`}>
                 <div className="project-main-info">
                   <h3>{project.title}</h3>
                   <span className="client-tag">{project.client_name}</span>
                   {project.access_role !== 'owner' && <span className="shared-tag">Compartilhado</span>}
+                  {project.archived === 1 && <span className="archived-tag">Arquivado</span>}
                 </div>
                 
                 <div className="project-meta">
                   <div className="meta-item">
                     <span>Valor Base</span>
-                    <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.base_value)}</strong>
+                    <strong>{project.can_view_financials ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(project.base_value) : 'Restrito'}</strong>
                   </div>
                   <div className="meta-item">
                     <span>Prazo</span>
@@ -84,9 +137,17 @@ export default function Projects() {
                   </div>
                 </div>
                 {/* Botão atualizado para Link */}
-                <Link to={`/projetos/${project.id}`} className="btn-manage">
-                  Gerenciar
-                </Link>
+                <div className="project-actions">
+                  <Link to={`/projetos/${project.id}`} className="btn-manage">
+                    Gerenciar
+                  </Link>
+                  {canArchiveOrRestore(project) && project.archived !== 1 && (
+                    <button className="btn-archive" onClick={() => handleArchive(project)}>Arquivar</button>
+                  )}
+                  {canArchiveOrRestore(project) && project.archived === 1 && (
+                    <button className="btn-restore" onClick={() => handleRestore(project)}>Restaurar</button>
+                  )}
+                </div>
               </div>
             ))
           ) : (

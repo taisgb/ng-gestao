@@ -2,9 +2,19 @@ const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
 
+const namedConnections = new Map();
+
 async function connectDb() {
+    const filename = process.env.SQLITE_FILENAME
+        ? path.resolve(process.env.SQLITE_FILENAME)
+        : path.resolve(__dirname, 'database.sqlite');
+
+    if (process.env.SQLITE_FILENAME && namedConnections.has(filename)) {
+        return namedConnections.get(filename);
+    }
+
     const db = await open({
-        filename: path.resolve(__dirname, 'database.sqlite'),
+        filename,
         driver: sqlite3.Database
     });
 
@@ -189,6 +199,143 @@ async function connectDb() {
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (project_id) REFERENCES projects(id)
         );
+
+        -- 15. Times / equipes
+        CREATE TABLE IF NOT EXISTS teams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            owner_id INTEGER NOT NULL,
+            archived INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (owner_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL,
+            user_id INTEGER,
+            email TEXT NOT NULL,
+            role TEXT DEFAULT 'member',
+            status TEXT DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(team_id, email),
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS team_invites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL,
+            email TEXT NOT NULL,
+            invited_by INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            accepted_at DATETIME,
+            UNIQUE(team_id, email),
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (invited_by) REFERENCES users(id)
+        );
+
+        -- 16. Lancamentos financeiros do projeto
+        CREATE TABLE IF NOT EXISTS project_financial_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            team_id INTEGER,
+            user_id INTEGER NOT NULL,
+            created_by INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            amount REAL NOT NULL DEFAULT 0,
+            date DATE NOT NULL,
+            status TEXT DEFAULT 'pending',
+            payment_method TEXT,
+            affects_project_total INTEGER DEFAULT 0,
+            affects_my_financial INTEGER DEFAULT 0,
+            reimbursable INTEGER DEFAULT 0,
+            reimbursed_at DATE,
+            notes TEXT,
+            archived INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        );
+
+        -- 17. Configuracao fiscal do usuario
+        CREATE TABLE IF NOT EXISTS user_fiscal_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            company_type TEXT DEFAULT 'mei',
+            annual_revenue_limit REAL DEFAULT 81000,
+            opening_date DATE,
+            use_proportional_limit INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        -- 18. Lancamentos financeiros pessoais privados
+        CREATE TABLE IF NOT EXISTS personal_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL,
+            amount REAL NOT NULL DEFAULT 0,
+            date DATE NOT NULL,
+            status TEXT DEFAULT 'expected',
+            payment_method TEXT,
+            source TEXT DEFAULT 'manual',
+            project_id INTEGER,
+            team_id INTEGER,
+            transaction_id INTEGER,
+            project_financial_entry_id INTEGER,
+            notes TEXT,
+            is_recurring INTEGER DEFAULT 0,
+            archived INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+            FOREIGN KEY (project_financial_entry_id) REFERENCES project_financial_entries(id)
+        );
+
+        -- 19. Documentos por link externo / Drive
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            team_id INTEGER,
+            client_id INTEGER,
+            project_id INTEGER,
+            invoice_id INTEGER,
+            transaction_id INTEGER,
+            project_financial_entry_id INTEGER,
+            file_name TEXT NOT NULL,
+            file_url TEXT NOT NULL,
+            provider TEXT DEFAULT 'external',
+            document_type TEXT DEFAULT 'other',
+            description TEXT,
+            mime_type TEXT,
+            size INTEGER,
+            archived INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (client_id) REFERENCES clients(id),
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (invoice_id) REFERENCES invoices(id),
+            FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+            FOREIGN KEY (project_financial_entry_id) REFERENCES project_financial_entries(id)
+        );
     `);
 
     const userColumns = await db.all('PRAGMA table_info(users)');
@@ -203,6 +350,46 @@ async function connectDb() {
         if (!existingUserColumns.includes(name)) {
             await db.exec(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
         }
+    }
+
+    async function ensureColumn(table, name, type) {
+        const columns = await db.all(`PRAGMA table_info(${table})`);
+        if (!columns.some(column => column.name === name)) {
+            await db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+        }
+    }
+
+    await ensureColumn('clients', 'team_id', 'INTEGER');
+    await ensureColumn('clients', 'scope', "TEXT DEFAULT 'individual'");
+    await ensureColumn('clients', 'archived', 'INTEGER DEFAULT 0');
+    await ensureColumn('projects', 'team_id', 'INTEGER');
+    await ensureColumn('projects', 'archived_at', 'DATETIME');
+    await ensureColumn('services', 'team_id', 'INTEGER');
+    await ensureColumn('services', 'scope', "TEXT DEFAULT 'individual'");
+    await ensureColumn('services', 'default_value', 'REAL DEFAULT 0');
+    await ensureColumn('services', 'archived', 'INTEGER DEFAULT 0');
+    await ensureColumn('services', 'updated_at', 'DATETIME');
+    await ensureColumn('tasks', 'team_id', 'INTEGER');
+    await ensureColumn('transactions', 'project_financial_entry_id', 'INTEGER');
+    await ensureColumn('personal_transactions', 'team_id', 'INTEGER');
+    await ensureColumn('personal_transactions', 'transaction_id', 'INTEGER');
+    await ensureColumn('personal_transactions', 'project_financial_entry_id', 'INTEGER');
+    await ensureColumn('personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
+    await ensureColumn('personal_transactions', 'archived', 'INTEGER DEFAULT 0');
+    await ensureColumn('personal_transactions', 'updated_at', 'DATETIME');
+    await ensureColumn('documents', 'team_id', 'INTEGER');
+    await ensureColumn('documents', 'client_id', 'INTEGER');
+    await ensureColumn('documents', 'project_id', 'INTEGER');
+    await ensureColumn('documents', 'invoice_id', 'INTEGER');
+    await ensureColumn('documents', 'transaction_id', 'INTEGER');
+    await ensureColumn('documents', 'project_financial_entry_id', 'INTEGER');
+    await ensureColumn('documents', 'mime_type', 'TEXT');
+    await ensureColumn('documents', 'size', 'INTEGER');
+    await ensureColumn('documents', 'archived', 'INTEGER DEFAULT 0');
+    await ensureColumn('documents', 'updated_at', 'DATETIME');
+
+    if (process.env.SQLITE_FILENAME) {
+        namedConnections.set(filename, db);
     }
 
     return db;

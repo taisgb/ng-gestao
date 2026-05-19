@@ -28,14 +28,15 @@ $line: #ece7df;
     border: 1px solid $line;
     border-radius: 8px;
     padding: 18px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 
     form {
       display: grid;
-      grid-template-columns: 1fr 160px 1.2fr auto;
+      grid-template-columns: 1fr 150px 1.2fr 180px auto auto;
       gap: 10px;
 
-      input {
+      input,
+      select {
         min-width: 0;
         border: 1px solid $line;
         border-radius: 8px;
@@ -49,6 +50,34 @@ $line: #ece7df;
         color: #fff;
         font-weight: 700;
         padding: 0 14px;
+      }
+
+      .btn-cancel {
+        background: transparent;
+        color: $earth-brown;
+        border: 1px solid $line;
+      }
+    }
+  }
+
+  .service-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+
+    button {
+      border: 1px solid $line;
+      background: #fff;
+      color: $earth-brown;
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-weight: 700;
+
+      &.active {
+        background: $leaf-green;
+        border-color: $leaf-green;
+        color: #fff;
       }
     }
   }
@@ -69,34 +98,78 @@ $line: #ece7df;
     align-items: center;
     gap: 16px;
 
+    &.archived {
+      opacity: 0.78;
+      border-style: dashed;
+    }
+
     strong { color: $earth-brown; }
     p { color: #777; font-size: 0.88rem; margin-top: 4px; }
+
+    .service-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+
+      small {
+        background: $sand-bg;
+        color: $earth-brown;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+      }
+
+      .archived-badge {
+        background: #fff4e5;
+        color: #8a4b1a;
+        font-weight: 700;
+      }
+    }
   }
 
   .service-meta {
     display: flex;
     align-items: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
 
     span {
       color: $leaf-green;
       font-weight: 700;
       white-space: nowrap;
+      margin-right: 4px;
     }
 
     button {
       border: 1px solid $line;
       border-radius: 8px;
       background: $sand-bg;
-      color: #c24141;
+      color: #34516f;
       padding: 8px 10px;
+
+      &.danger {
+        color: #c24141;
+      }
+
+      &.restore {
+        color: $leaf-green;
+        background: #eef7ed;
+        border-color: #cfe6cb;
+      }
+
+      &:disabled {
+        color: #aaa;
+        cursor: not-allowed;
+      }
     }
   }
 
   .empty-msg { color: #888; }
 }
 
-@media (max-width: 780px) {
+@media (max-width: 880px) {
   .services-container {
     .service-form form {
       grid-template-columns: 1fr;
@@ -107,6 +180,10 @@ $line: #ece7df;
     .service-card {
       align-items: flex-start;
       flex-direction: column;
+    }
+
+    .service-meta {
+      justify-content: flex-start;
     }
   }
 }

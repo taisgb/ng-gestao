@@ -2,6 +2,10 @@ const connectDb = require('../config/database');
 const { isDate, isNonEmptyString, isNonNegativeMoney, toMoney } = require('../utils/validators');
 
 const ALLOWED_STATUSES = ['pendente', 'emitida', 'enviada', 'paga', 'cancelada'];
+const COMPANY_LIMITS = {
+    mei: 81000,
+    me: 360000
+};
 
 async function canAccessProject(db, projectId, userId) {
     return db.get(`
@@ -88,6 +92,119 @@ module.exports = {
         } catch (error) {
             console.error('[InvoiceController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar notas fiscais.' });
+        }
+    },
+
+    async fiscalSettings(req, res) {
+        try {
+            const db = await connectDb();
+            let settings = await db.get('SELECT * FROM user_fiscal_settings WHERE user_id = ?', [req.userId]);
+
+            if (!settings) {
+                await db.run(
+                    "INSERT INTO user_fiscal_settings (user_id, company_type, annual_revenue_limit) VALUES (?, 'mei', ?)",
+                    [req.userId, COMPANY_LIMITS.mei]
+                );
+                settings = await db.get('SELECT * FROM user_fiscal_settings WHERE user_id = ?', [req.userId]);
+            }
+
+            return res.json(settings);
+        } catch (error) {
+            console.error('[InvoiceController.fiscalSettings]', error);
+            return res.status(500).json({ error: 'Erro ao carregar configuracao fiscal.' });
+        }
+    },
+
+    async updateFiscalSettings(req, res) {
+        try {
+            const { company_type, opening_date, use_proportional_limit } = req.body;
+
+            if (!['mei', 'me'].includes(company_type)) {
+                return res.status(400).json({ error: 'Enquadramento fiscal invalido.' });
+            }
+
+            if (opening_date && !isDate(opening_date)) {
+                return res.status(400).json({ error: 'Data de abertura invalida.' });
+            }
+
+            const annualLimit = COMPANY_LIMITS[company_type];
+            const db = await connectDb();
+
+            await db.run(`
+                INSERT INTO user_fiscal_settings (
+                    user_id, company_type, annual_revenue_limit, opening_date, use_proportional_limit, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    company_type = excluded.company_type,
+                    annual_revenue_limit = excluded.annual_revenue_limit,
+                    opening_date = excluded.opening_date,
+                    use_proportional_limit = excluded.use_proportional_limit,
+                    updated_at = CURRENT_TIMESTAMP
+            `, [req.userId, company_type, annualLimit, opening_date || null, use_proportional_limit ? 1 : 0]);
+
+            const settings = await db.get('SELECT * FROM user_fiscal_settings WHERE user_id = ?', [req.userId]);
+            return res.json(settings);
+        } catch (error) {
+            console.error('[InvoiceController.updateFiscalSettings]', error);
+            return res.status(500).json({ error: 'Erro ao salvar configuracao fiscal.' });
+        }
+    },
+
+    async summary(req, res) {
+        try {
+            const year = String(req.query.year || new Date().getFullYear());
+            if (!/^\d{4}$/.test(year)) {
+                return res.status(400).json({ error: 'Ano fiscal invalido.' });
+            }
+
+            const db = await connectDb();
+            let settings = await db.get('SELECT * FROM user_fiscal_settings WHERE user_id = ?', [req.userId]);
+            if (!settings) {
+                await db.run(
+                    "INSERT INTO user_fiscal_settings (user_id, company_type, annual_revenue_limit) VALUES (?, 'mei', ?)",
+                    [req.userId, COMPANY_LIMITS.mei]
+                );
+                settings = await db.get('SELECT * FROM user_fiscal_settings WHERE user_id = ?', [req.userId]);
+            }
+
+            const rows = await db.all(`
+                SELECT status, amount
+                FROM invoices
+                WHERE user_id = ? AND strftime('%Y', issue_date) = ?
+            `, [req.userId, year]);
+
+            const totalFiltered = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            const pendingCount = rows.filter(row => row.status === 'pendente').length;
+            const issuedCount = rows.filter(row => ['emitida', 'enviada'].includes(row.status)).length;
+            const paidCount = rows.filter(row => row.status === 'paga').length;
+            const totalRevenueYear = rows
+                .filter(row => ['emitida', 'enviada', 'paga'].includes(row.status))
+                .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            const annualLimit = Number(settings.annual_revenue_limit || COMPANY_LIMITS[settings.company_type] || COMPANY_LIMITS.mei);
+            const usedPercentage = annualLimit > 0 ? (totalRevenueYear / annualLimit) * 100 : 0;
+            const alertLevel =
+                usedPercentage > 100 ? 'exceeded' :
+                usedPercentage > 90 ? 'danger' :
+                usedPercentage >= 70 ? 'warning' :
+                'normal';
+
+            return res.json({
+                total_filtered: totalFiltered,
+                pending_count: pendingCount,
+                issued_count: issuedCount,
+                paid_count: paidCount,
+                fiscal_year: Number(year),
+                company_type: settings.company_type,
+                annual_revenue_limit: annualLimit,
+                total_revenue_year: totalRevenueYear,
+                remaining_limit: annualLimit - totalRevenueYear,
+                used_percentage: usedPercentage,
+                alert_level: alertLevel
+            });
+        } catch (error) {
+            console.error('[InvoiceController.summary]', error);
+            return res.status(500).json({ error: 'Erro ao carregar resumo fiscal.' });
         }
     },
 

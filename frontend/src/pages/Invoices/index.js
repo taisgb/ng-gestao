@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../services/api';
 import './styles.scss';
 
@@ -9,6 +9,18 @@ export default function Invoices() {
   const [projects, setProjects] = useState([]);
   const [feedback, setFeedback] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [fiscalYear, setFiscalYear] = useState(String(new Date().getFullYear()));
+  const [fiscalSettings, setFiscalSettings] = useState({ company_type: 'mei', opening_date: '', use_proportional_limit: 0 });
+  const [fiscalSummary, setFiscalSummary] = useState(null);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [invoiceDocuments, setInvoiceDocuments] = useState([]);
+  const [invoiceDocumentForm, setInvoiceDocumentForm] = useState({
+    file_name: '',
+    file_url: '',
+    provider: 'drive',
+    document_type: 'invoice',
+    description: ''
+  });
   const [form, setForm] = useState({
     number: '',
     client_name: '',
@@ -35,6 +47,23 @@ export default function Invoices() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const loadFiscalData = useCallback(async () => {
+    try {
+      const [settingsRes, summaryRes] = await Promise.all([
+        api.get('/invoices/fiscal-settings'),
+        api.get(`/invoices/summary?year=${fiscalYear}`)
+      ]);
+      setFiscalSettings(settingsRes.data);
+      setFiscalSummary(summaryRes.data);
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao carregar resumo fiscal.');
+    }
+  }, [fiscalYear]);
+
+  useEffect(() => {
+    loadFiscalData();
+  }, [loadFiscalData]);
 
   const visibleInvoices = useMemo(() => {
     if (!filterStatus) return invoices;
@@ -69,6 +98,7 @@ export default function Invoices() {
         project_id: ''
       });
       await loadData();
+      await loadFiscalData();
       setFeedback('Nota fiscal registrada.');
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao registrar nota fiscal.');
@@ -78,11 +108,83 @@ export default function Invoices() {
   async function handleStatus(invoice, status) {
     await api.put(`/invoices/${invoice.id}`, { status });
     setInvoices(current => current.map(item => item.id === invoice.id ? { ...item, status } : item));
+    await loadFiscalData();
   }
 
   async function handleDelete(id) {
     await api.delete(`/invoices/${id}`);
     setInvoices(current => current.filter(invoice => invoice.id !== id));
+    await loadFiscalData();
+  }
+
+  async function loadInvoiceDocuments(invoice) {
+    setSelectedInvoice(invoice);
+    try {
+      const response = await api.get(`/invoices/${invoice.id}/documents?status=all`);
+      setInvoiceDocuments(response.data);
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao carregar documentos da nota fiscal.');
+    }
+  }
+
+  async function handleCreateInvoiceDocument(e) {
+    e.preventDefault();
+    setFeedback('');
+
+    try {
+      await api.post('/documents', {
+        ...invoiceDocumentForm,
+        invoice_id: selectedInvoice.id,
+        project_id: selectedInvoice.project_id || null
+      });
+      setInvoiceDocumentForm({
+        file_name: '',
+        file_url: '',
+        provider: 'drive',
+        document_type: 'invoice',
+        description: ''
+      });
+      await loadInvoiceDocuments(selectedInvoice);
+      setFeedback('Documento da NF cadastrado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao cadastrar documento da NF.');
+    }
+  }
+
+  async function handleArchiveInvoiceDocument(document) {
+    const confirmed = window.confirm('Deseja arquivar este documento? Ele podera ser restaurado depois.');
+    if (!confirmed) return;
+
+    try {
+      await api.patch(`/documents/${document.id}/archive`);
+      await loadInvoiceDocuments(selectedInvoice);
+      setFeedback('Documento arquivado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar documento.');
+    }
+  }
+
+  async function handleRestoreInvoiceDocument(document) {
+    try {
+      await api.patch(`/documents/${document.id}/restore`);
+      await loadInvoiceDocuments(selectedInvoice);
+      setFeedback('Documento restaurado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar documento.');
+    }
+  }
+
+  async function handleFiscalSave(e) {
+    e.preventDefault();
+    setFeedback('');
+
+    try {
+      await api.put('/invoices/fiscal-settings', fiscalSettings);
+      await loadFiscalData();
+      setFeedback('Configuracao fiscal salva.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao salvar configuracao fiscal.');
+    }
   }
 
   function exportCsv() {
@@ -130,6 +232,52 @@ export default function Invoices() {
         <div><span>Pendentes</span><strong>{summary.pendente || 0}</strong></div>
         <div><span>Emitidas</span><strong>{summary.emitida || 0}</strong></div>
         <div><span>Pagas</span><strong>{summary.paga || 0}</strong></div>
+        <div><span>Limite anual</span><strong>{formatCurrency(fiscalSummary?.annual_revenue_limit)}</strong></div>
+        <div><span>Faturado no ano</span><strong>{formatCurrency(fiscalSummary?.total_revenue_year)}</strong></div>
+        <div><span>Disponivel</span><strong>{formatCurrency(fiscalSummary?.remaining_limit)}</strong></div>
+        <div><span>Utilizado</span><strong>{Number(fiscalSummary?.used_percentage || 0).toFixed(2)}%</strong></div>
+      </section>
+
+      <section className={`fiscal-card ${fiscalSummary?.alert_level || 'normal'}`}>
+        <form onSubmit={handleFiscalSave}>
+          <div>
+            <h2>Enquadramento fiscal</h2>
+            <p>
+              {(fiscalSettings.company_type || 'mei').toUpperCase()} - limite anual {formatCurrency(fiscalSummary?.annual_revenue_limit)}
+            </p>
+          </div>
+          <select
+            value={fiscalSettings.company_type || 'mei'}
+            onChange={e => setFiscalSettings(current => ({ ...current, company_type: e.target.value }))}
+          >
+            <option value="mei">MEI</option>
+            <option value="me">ME / Microempresa</option>
+          </select>
+          <input
+            type="date"
+            value={fiscalSettings.opening_date || ''}
+            onChange={e => setFiscalSettings(current => ({ ...current, opening_date: e.target.value }))}
+          />
+          <label>
+            <input
+              type="checkbox"
+              checked={Boolean(fiscalSettings.use_proportional_limit)}
+              onChange={e => setFiscalSettings(current => ({ ...current, use_proportional_limit: e.target.checked ? 1 : 0 }))}
+            />
+            Limite proporcional
+          </label>
+          <button type="submit">Salvar</button>
+        </form>
+        <div className="limit-progress">
+          <div style={{ width: `${Math.min(100, Number(fiscalSummary?.used_percentage || 0))}%` }} />
+        </div>
+        <p>
+          Voce usou {Number(fiscalSummary?.used_percentage || 0).toFixed(2)}% do limite anual.
+          {' '}Ainda restam {formatCurrency(fiscalSummary?.remaining_limit)} ate o limite.
+        </p>
+        {fiscalSummary?.alert_level === 'warning' && <strong>Atencao: voce esta proximo do limite anual.</strong>}
+        {fiscalSummary?.alert_level === 'danger' && <strong>Alerta: voce esta muito proximo do limite anual.</strong>}
+        {fiscalSummary?.alert_level === 'exceeded' && <strong>Limite anual ultrapassado.</strong>}
       </section>
 
       <section className="invoice-form-panel">
@@ -151,11 +299,76 @@ export default function Invoices() {
       </section>
 
       <div className="filter-row">
+        <select value={fiscalYear} onChange={e => setFiscalYear(e.target.value)}>
+          {[2024, 2025, 2026, 2027].map(year => <option key={year} value={year}>{year}</option>)}
+        </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">Todos os status</option>
           {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
         </select>
       </div>
+
+      {selectedInvoice && (
+        <section className="invoice-documents-panel">
+          <header>
+            <div>
+              <h2>Documentos da NF {selectedInvoice.number || selectedInvoice.id}</h2>
+              <p>PDF da nota, comprovante, boleto, recibo ou link externo.</p>
+            </div>
+            <button onClick={() => setSelectedInvoice(null)}>Fechar</button>
+          </header>
+
+          <form onSubmit={handleCreateInvoiceDocument}>
+            <input
+              value={invoiceDocumentForm.file_name}
+              onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, file_name: e.target.value })}
+              placeholder="Nome do documento"
+              required
+            />
+            <input
+              value={invoiceDocumentForm.file_url}
+              onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, file_url: e.target.value })}
+              placeholder="https://..."
+              required
+            />
+            <select value={invoiceDocumentForm.provider} onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, provider: e.target.value })}>
+              <option value="drive">Drive</option>
+              <option value="external">Externo</option>
+              <option value="other">Outro</option>
+            </select>
+            <select value={invoiceDocumentForm.document_type} onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, document_type: e.target.value })}>
+              <option value="invoice">Nota fiscal</option>
+              <option value="receipt">Comprovante</option>
+              <option value="boleto">Boleto</option>
+              <option value="folder">Pasta</option>
+              <option value="other">Outro</option>
+            </select>
+            <input
+              value={invoiceDocumentForm.description}
+              onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, description: e.target.value })}
+              placeholder="Descricao"
+            />
+            <button type="submit">Adicionar</button>
+          </form>
+
+          <div className="invoice-documents-list">
+            {invoiceDocuments.map(document => (
+              <article key={document.id} className={document.archived === 1 ? 'archived' : ''}>
+                <div>
+                  <strong>{document.file_name}</strong>
+                  <span>{document.document_type} - {document.provider}{document.archived === 1 ? ' - Arquivado' : ''}</span>
+                </div>
+                <div>
+                  <a href={document.file_url} target="_blank" rel="noreferrer">Abrir</a>
+                  {document.can_edit && document.archived !== 1 && <button onClick={() => handleArchiveInvoiceDocument(document)}>Arquivar</button>}
+                  {document.can_edit && document.archived === 1 && <button onClick={() => handleRestoreInvoiceDocument(document)}>Restaurar</button>}
+                </div>
+              </article>
+            ))}
+            {invoiceDocuments.length === 0 && <p className="empty-msg">Nenhum documento vinculado.</p>}
+          </div>
+        </section>
+      )}
 
       <section className="invoice-list">
         {visibleInvoices.map(invoice => (
@@ -170,6 +383,7 @@ export default function Invoices() {
               <select value={invoice.status} onChange={e => handleStatus(invoice, e.target.value)}>
                 {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
               </select>
+              <button onClick={() => loadInvoiceDocuments(invoice)}>Docs</button>
               <button onClick={() => handleDelete(invoice.id)}>Remover</button>
             </div>
           </article>

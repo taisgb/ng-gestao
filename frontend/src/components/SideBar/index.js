@@ -12,8 +12,10 @@ import {
   MdPerson,
   MdAdminPanelSettings,
   MdReceiptLong,
+  MdFolderOpen,
   MdDarkMode,
-  MdLightMode
+  MdLightMode,
+  MdGroups
 } from 'react-icons/md';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
@@ -50,6 +52,11 @@ export default function Sidebar() {
           <span>Clientes</span>
         </NavLink>
 
+        <NavLink to="/times" className={({ isActive }) => isActive ? 'active' : ''}>
+          <MdGroups size={24} />
+          <span>Times</span>
+        </NavLink>
+
         <NavLink to="/projetos" className={({ isActive }) => isActive ? 'active' : ''}>
           <MdAssignment size={24} />
           <span>Projetos</span>
@@ -73,6 +80,11 @@ export default function Sidebar() {
         <NavLink to="/notas-fiscais" className={({ isActive }) => isActive ? 'active' : ''}>
           <MdReceiptLong size={24} />
           <span>NFs</span>
+        </NavLink>
+
+        <NavLink to="/documentos" className={({ isActive }) => isActive ? 'active' : ''}>
+          <MdFolderOpen size={24} />
+          <span>Documentos</span>
         </NavLink>
 
         <NavLink to="/servicos" className={({ isActive }) => isActive ? 'active' : ''}>
