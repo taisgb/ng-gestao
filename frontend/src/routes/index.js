@@ -12,6 +12,7 @@ import ProjectDetails from '../pages/ProjectDetails';
 import Projects from '../pages/Projects';
 import Finance from '../pages/Finance';
 import Agenda from '../pages/Agenda';
+import Tasks from '../pages/Tasks';
 import Services from '../pages/Services';
 import PersonalFinance from '../pages/PersonalFinance';
 import Profile from '../pages/Profile';
@@ -32,6 +33,7 @@ export default function AppRoutes() {
         <Route element={<PrivateRoute />}>
           <Route element={<DefaultLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/tarefas" element={<Tasks />} />
             <Route path="/clientes" element={<Clients />} />
             <Route path="/times" element={<Teams />} />
             <Route path="/upgrade" element={<Upgrade />} />

@@ -94,6 +94,7 @@ routes.post('/projects/:id/notes', ProjectController.createNote);
 // --- TAREFAS E SERVIÇOS DO DIA ---
 routes.post('/tasks', TaskController.create);
 routes.get('/tasks', TaskController.index);
+routes.get('/tasks/summary', TaskController.summary);
 routes.get('/tasks/today', TaskController.today);
 routes.get('/tasks/project/:project_id', TaskController.filterByProject);
 routes.put('/tasks/:id', TaskController.update);

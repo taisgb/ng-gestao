@@ -135,12 +135,25 @@ const POSTGRES_SCHEMA = `
     CREATE TABLE IF NOT EXISTS tasks (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES users(id),
+        created_by INTEGER REFERENCES users(id),
+        assigned_to INTEGER REFERENCES users(id),
         project_id INTEGER REFERENCES projects(id),
+        client_id INTEGER REFERENCES clients(id),
         team_id INTEGER REFERENCES teams(id),
+        service_id INTEGER,
+        invoice_id INTEGER,
+        document_id INTEGER,
+        financial_entry_id INTEGER,
         title TEXT NOT NULL,
-        task_type TEXT DEFAULT 'execucao',
+        description TEXT,
+        task_type TEXT DEFAULT 'operational',
+        priority TEXT DEFAULT 'medium',
+        scope TEXT DEFAULT 'individual',
         status TEXT DEFAULT 'pendente',
-        due_date DATE NOT NULL
+        due_date DATE,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS services (
@@ -414,6 +427,20 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'services', 'default_value', 'DOUBLE PRECISION DEFAULT 0');
     await ensurePostgresColumn(db, 'services', 'archived', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'tasks', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'tasks', 'created_by', 'INTEGER REFERENCES users(id)');
+    await ensurePostgresColumn(db, 'tasks', 'assigned_to', 'INTEGER REFERENCES users(id)');
+    await ensurePostgresColumn(db, 'tasks', 'client_id', 'INTEGER REFERENCES clients(id)');
+    await ensurePostgresColumn(db, 'tasks', 'service_id', 'INTEGER REFERENCES services(id)');
+    await ensurePostgresColumn(db, 'tasks', 'invoice_id', 'INTEGER REFERENCES invoices(id)');
+    await ensurePostgresColumn(db, 'tasks', 'document_id', 'INTEGER REFERENCES documents(id)');
+    await ensurePostgresColumn(db, 'tasks', 'financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+    await ensurePostgresColumn(db, 'tasks', 'description', 'TEXT');
+    await ensurePostgresColumn(db, 'tasks', 'priority', "TEXT DEFAULT 'medium'");
+    await ensurePostgresColumn(db, 'tasks', 'scope', "TEXT DEFAULT 'individual'");
+    await ensurePostgresColumn(db, 'tasks', 'completed_at', 'TIMESTAMP');
+    await ensurePostgresColumn(db, 'tasks', 'created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+    await ensurePostgresColumn(db, 'tasks', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+    await db.exec('ALTER TABLE tasks ALTER COLUMN due_date DROP NOT NULL');
     await ensurePostgresColumn(db, 'transactions', 'project_financial_entry_id', 'INTEGER');
     await ensurePostgresColumn(db, 'personal_transactions', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'personal_transactions', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
@@ -510,11 +537,25 @@ async function connectDb() {
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            created_by INTEGER,
+            assigned_to INTEGER,
             project_id INTEGER,
+            client_id INTEGER,
+            team_id INTEGER,
+            service_id INTEGER,
+            invoice_id INTEGER,
+            document_id INTEGER,
+            financial_entry_id INTEGER,
             title TEXT NOT NULL,
-            task_type TEXT DEFAULT 'execução',
+            description TEXT,
+            task_type TEXT DEFAULT 'operational',
+            priority TEXT DEFAULT 'medium',
+            scope TEXT DEFAULT 'individual',
             status TEXT DEFAULT 'pendente',
-            due_date DATE NOT NULL,
+            due_date DATE,
+            completed_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (project_id) REFERENCES projects(id)
         );
@@ -815,6 +856,19 @@ async function connectDb() {
     await ensureColumn('services', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('services', 'updated_at', 'DATETIME');
     await ensureColumn('tasks', 'team_id', 'INTEGER');
+    await ensureColumn('tasks', 'created_by', 'INTEGER');
+    await ensureColumn('tasks', 'assigned_to', 'INTEGER');
+    await ensureColumn('tasks', 'client_id', 'INTEGER');
+    await ensureColumn('tasks', 'service_id', 'INTEGER');
+    await ensureColumn('tasks', 'invoice_id', 'INTEGER');
+    await ensureColumn('tasks', 'document_id', 'INTEGER');
+    await ensureColumn('tasks', 'financial_entry_id', 'INTEGER');
+    await ensureColumn('tasks', 'description', 'TEXT');
+    await ensureColumn('tasks', 'priority', "TEXT DEFAULT 'medium'");
+    await ensureColumn('tasks', 'scope', "TEXT DEFAULT 'individual'");
+    await ensureColumn('tasks', 'completed_at', 'DATETIME');
+    await ensureColumn('tasks', 'created_at', 'DATETIME');
+    await ensureColumn('tasks', 'updated_at', 'DATETIME');
     await ensureColumn('transactions', 'project_financial_entry_id', 'INTEGER');
     await ensureColumn('personal_transactions', 'team_id', 'INTEGER');
     await ensureColumn('personal_transactions', 'transaction_id', 'INTEGER');

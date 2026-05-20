@@ -506,6 +506,77 @@ test('team agenda tasks are visible to members but editable only by team editors
     }
 });
 
+test('operational tasks support list/calendar filters and financial privacy', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const noDateTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                title: 'Organizar arquivos',
+                task_type: 'document',
+                priority: 'urgent'
+            }
+        });
+        assert.equal(noDateTask.statusCode, 201);
+
+        const financialTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                title: 'Cobrar parcela',
+                task_type: 'financial',
+                priority: 'urgent',
+                due_date: '2000-01-01'
+            }
+        });
+        assert.equal(financialTask.statusCode, 201);
+
+        const list = await callController(TaskController.index, {
+            userId: seeded.ownerId,
+            query: {}
+        });
+        assert.equal(list.statusCode, 200);
+        assert.equal(list.body.some(task => task.id === noDateTask.body.id), true);
+
+        const calendar = await callController(TaskController.index, {
+            userId: seeded.ownerId,
+            query: { view: 'calendar' }
+        });
+        assert.equal(calendar.statusCode, 200);
+        assert.equal(calendar.body.some(task => task.id === noDateTask.body.id), false);
+        assert.equal(calendar.body.some(task => task.id === financialTask.body.id), true);
+
+        const financialFilter = await callController(TaskController.index, {
+            userId: seeded.ownerId,
+            query: { source: 'financial', priority: 'urgent' }
+        });
+        assert.equal(financialFilter.statusCode, 200);
+        assert.equal(financialFilter.body.length, 1);
+        assert.equal(financialFilter.body[0].id, financialTask.body.id);
+
+        const overdue = await callController(TaskController.index, {
+            userId: seeded.ownerId,
+            query: { status: 'overdue' }
+        });
+        assert.equal(overdue.statusCode, 200);
+        assert.equal(overdue.body.some(task => task.id === financialTask.body.id), true);
+
+        const memberFinancial = await callController(TaskController.index, {
+            userId: seeded.memberId,
+            query: { source: 'financial' }
+        });
+        assert.equal(memberFinancial.statusCode, 200);
+        assert.equal(memberFinancial.body.some(task => task.id === financialTask.body.id), false);
+
+        const savedFinancialTask = await db.get('SELECT team_id FROM tasks WHERE id = ?', [financialTask.body.id]);
+        assert.equal(savedFinancialTask.team_id, seeded.teamId);
+    } finally {
+        await cleanup();
+    }
+});
+
 test('team services are editable by team editors, visible to members and hidden from outsiders', async () => {
     const { db, cleanup } = await openTestDb();
     try {

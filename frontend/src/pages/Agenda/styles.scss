@@ -88,7 +88,19 @@ $line: #ece7df;
   .tasks-board {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 18px;
+
+    .calendar-day {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      h2 {
+        color: $earth-brown;
+        font-size: 1rem;
+        font-weight: 800;
+      }
+    }
 
     .task-card {
       background: #fff;
