@@ -772,6 +772,7 @@ test('task due date persists on create, update, list, summary and dashboard feed
             query: { view: 'calendar' }
         });
         assert.equal(calendar.statusCode, 200);
+        assert.equal(Array.isArray(calendar.body), true);
         assert.equal(calendar.body.some(task => task.id === createdWithDueDate.body.id), true);
         assert.equal(calendar.body.some(task => task.id === noDateTask.body.id), false);
     } finally {
@@ -865,7 +866,7 @@ test('team agenda tasks are visible to members but editable only by team editors
             params: { id: gestorCreate.body.id },
             body: { status: 'concluído' }
         });
-        assert.equal(memberUpdate.statusCode, 404);
+        assert.equal(memberUpdate.statusCode, 403);
 
         const adminUpdate = await callController(TaskController.update, {
             userId: seeded.adminId,
@@ -1119,6 +1120,29 @@ test('documents support individual privacy, team permissions, links and reversib
         assert.equal(outsideDocs.statusCode, 200);
         assert.equal(outsideDocs.body.some(document => document.id === individualDoc.body.id), false);
 
+        const superUser = await db.run(
+            "INSERT INTO users (name, email, password, plan, role, is_super_admin) VALUES ('Super', 'super@test.local', 'hash', 'admin', 'super_admin', 1)"
+        );
+        const superAdminDocs = await callController(DocumentController.index, {
+            userId: superUser.lastID,
+            query: { status: 'all' }
+        });
+        assert.equal(superAdminDocs.statusCode, 200);
+        assert.equal(superAdminDocs.body.some(document => document.id === individualDoc.body.id), false);
+
+        const sharedPrivateDoc = await callController(DocumentController.share, {
+            userId: seeded.ownerId,
+            params: { id: individualDoc.body.id },
+            body: { user_id: seeded.memberId, permission: 'view' }
+        });
+        assert.equal(sharedPrivateDoc.statusCode, 201);
+
+        const memberPrivateDocs = await callController(DocumentController.index, {
+            userId: seeded.memberId,
+            query: { status: 'all' }
+        });
+        assert.equal(memberPrivateDocs.body.some(document => document.id === individualDoc.body.id), true);
+
         const memberCreate = await callController(DocumentController.create, {
             userId: seeded.memberId,
             body: {
@@ -1167,7 +1191,20 @@ test('documents support individual privacy, team permissions, links and reversib
         assert.equal(memberDocs.statusCode, 200);
         assert.equal(memberDocs.body.length, 1);
         assert.equal(memberDocs.body[0].id, teamDoc.body.id);
-        assert.equal(memberDocs.body[0].can_edit, 0);
+        assert.equal(Boolean(memberDocs.body[0].can_edit), false);
+
+        await db.run(
+            "UPDATE clients SET email = 'cliente@example.com', phone = '71999990000', document = '12345678900', contact_name = 'Contato' WHERE id = ?",
+            [seeded.clientId]
+        );
+        const memberClients = await callController(ClientController.index, {
+            userId: seeded.memberId,
+            query: { status: 'all' }
+        });
+        const memberClient = memberClients.body.find(client => client.id === seeded.clientId);
+        assert.equal(memberClient.email, null);
+        assert.equal(memberClient.phone, null);
+        assert.equal(memberClient.document, null);
 
         const outsideTeamDocs = await callController(DocumentController.index, {
             userId: seeded.outsideId,
@@ -1240,7 +1277,73 @@ test('documents support individual privacy, team permissions, links and reversib
             query: { status: 'all' }
         });
         assert.equal(projectDocs.statusCode, 200);
-        assert.equal(projectDocs.body.some(document => document.id === projectDoc.body.id), true);
+        assert.equal(projectDocs.body.some(document => document.id === projectDoc.body.id), false);
+
+        await db.run(
+            "INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+        const selectedMemberProjectDocs = await callController(DocumentController.byProject, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId },
+            query: { status: 'all' }
+        });
+        assert.equal(selectedMemberProjectDocs.body.some(document => document.id === projectDoc.body.id), true);
+
+        const financialEntry = await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, description, category, amount, date, status
+            )
+            VALUES (?, ?, ?, ?, 'expense', 'Comprovante privado', 'Plugin', 300, '2026-05-20', 'paid')
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+        const financialDoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                file_name: 'Comprovante financeiro',
+                file_url: 'https://example.com/comprovante.pdf',
+                provider: 'external',
+                document_type: 'receipt',
+                team_id: seeded.teamId,
+                project_financial_entry_id: financialEntry.lastID
+            }
+        });
+        assert.equal(financialDoc.statusCode, 201);
+
+        const memberFinancialDocs = await callController(DocumentController.index, {
+            userId: seeded.memberId,
+            query: { status: 'all' }
+        });
+        assert.equal(memberFinancialDocs.body.some(document => document.id === financialDoc.body.id), false);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('financeiro role sees only explicitly authorized project financials', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        await db.run(
+            "INSERT INTO team_members (team_id, user_id, email, role, status) VALUES (?, ?, 'outside@test.local', 'financeiro', 'active')",
+            [seeded.teamId, seeded.outsideId]
+        );
+
+        assert.equal(await canViewTeamResource(db, seeded.outsideId, seeded.teamId), true);
+        assert.equal(await canViewProjectFinancials(db, seeded.outsideId, seeded.projectId), false);
+
+        await db.run(
+            "INSERT INTO project_members (project_id, user_id, role) VALUES (?, ?, 'financeiro')",
+            [seeded.projectId, seeded.outsideId]
+        );
+
+        assert.equal(await canViewProjectFinancials(db, seeded.outsideId, seeded.projectId), true);
+
+        const projectSummary = await callController(ProjectFinancialController.summary, {
+            userId: seeded.outsideId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(projectSummary.statusCode, 200);
     } finally {
         await cleanup();
     }
@@ -1366,7 +1469,8 @@ test('personal transactions are private, filterable and summarized by month', as
                 amount: 1500,
                 date: '2026-05-10',
                 status: 'paid',
-                source: 'manual'
+                source: 'manual',
+                origin_label: 'Freelance'
             }
         });
         assert.equal(income.statusCode, 201);
@@ -1408,6 +1512,17 @@ test('personal transactions are private, filterable and summarized by month', as
         assert.equal(ownerIncomeList.statusCode, 200);
         assert.equal(ownerIncomeList.body.length, 1);
         assert.equal(ownerIncomeList.body[0].id, income.body.id);
+        assert.equal(ownerIncomeList.body[0].source, 'manual');
+        assert.equal(ownerIncomeList.body[0].origin_type, 'manual');
+        assert.equal(ownerIncomeList.body[0].origin_label, 'Freelance');
+
+        const manualIncomeList = await callController(PersonalTransactionController.index, {
+            userId: seeded.ownerId,
+            query: { source: 'manual', month: '05', year: '2026' }
+        });
+        assert.equal(manualIncomeList.statusCode, 200);
+        assert.equal(manualIncomeList.body.length, 1);
+        assert.equal(manualIncomeList.body[0].origin_label, 'Freelance');
 
         const memberCannotEdit = await callController(PersonalTransactionController.update, {
             userId: seeded.memberId,
@@ -1419,9 +1534,13 @@ test('personal transactions are private, filterable and summarized by month', as
         const ownerEdit = await callController(PersonalTransactionController.update, {
             userId: seeded.ownerId,
             params: { id: expense.body.id },
-            body: { status: 'paid', amount: 250 }
+            body: { status: 'paid', amount: 250, source: 'manual', origin_label: 'PIX recebido' }
         });
         assert.equal(ownerEdit.statusCode, 200);
+
+        const editedExpense = await db.get('SELECT source, origin_label FROM personal_transactions WHERE id = ?', [expense.body.id]);
+        assert.equal(editedExpense.source, 'manual');
+        assert.equal(editedExpense.origin_label, 'PIX recebido');
 
         const summary = await callController(PersonalTransactionController.summary, {
             userId: seeded.ownerId,

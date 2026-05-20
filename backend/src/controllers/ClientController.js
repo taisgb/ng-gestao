@@ -1,6 +1,13 @@
 const connectDb = require('../config/database');
 const { isEmail, isNonEmptyString, normalizeEmail } = require('../utils/validators');
-const { canEditTeamResource, canViewTeamResource } = require('../utils/permissions');
+const {
+    canEditTeamResource,
+    canViewClientSensitiveData,
+    canViewProject,
+    canViewTeamResource,
+    sanitizeClientForRole
+} = require('../utils/permissions');
+const { logActivity } = require('../utils/activityLog');
 
 async function getClientAccess(db, clientId, userId) {
     const client = await db.get(`
@@ -96,7 +103,15 @@ module.exports = {
                 ORDER BY c.archived ASC, c.name ASC
             `, [req.userId, status, status, status, req.userId]);
 
-            return res.json(clients);
+            const sanitizedClients = [];
+            for (const client of clients) {
+                sanitizedClients.push(sanitizeClientForRole(
+                    client,
+                    await canViewClientSensitiveData(db, req.userId, client)
+                ));
+            }
+
+            return res.json(sanitizedClients);
         } catch (error) {
             console.error('[ClientController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar clientes.' });
@@ -113,7 +128,10 @@ module.exports = {
                 return res.status(404).json({ error: 'Cliente nao encontrado ou acesso negado.' });
             }
 
-            return res.json(client);
+            return res.json(sanitizeClientForRole(
+                client,
+                await canViewClientSensitiveData(db, req.userId, client)
+            ));
         } catch (error) {
             console.error('[ClientController.show]', error);
             return res.status(500).json({ error: 'Erro ao buscar detalhes do cliente.' });
@@ -140,12 +158,18 @@ module.exports = {
                 ORDER BY p.archived ASC, p.id DESC
             `, [req.userId, id, include_archived === 'true' ? 'true' : 'false']);
 
-            const canSeeValues = !client.team_id || client.can_view_financials;
-            return res.json(projects.map(project => ({
-                ...project,
-                base_value: canSeeValues ? project.base_value : null,
-                can_view_financials: canSeeValues
-            })));
+            const visibleProjects = [];
+            for (const project of projects) {
+                if (!await canViewProject(db, req.userId, project.id)) continue;
+                const canSeeValues = !client.team_id || client.can_view_financials;
+                visibleProjects.push({
+                    ...project,
+                    base_value: canSeeValues ? project.base_value : null,
+                    can_view_financials: canSeeValues
+                });
+            }
+
+            return res.json(visibleProjects);
         } catch (error) {
             console.error('[ClientController.projects]', error);
             return res.status(500).json({ error: 'Erro ao buscar projetos do cliente.' });
@@ -216,6 +240,7 @@ module.exports = {
             }
 
             await db.run('UPDATE clients SET archived = 1 WHERE id = ?', [id]);
+            await logActivity(db, req.userId, 'archive', 'client', id);
             return res.json({ message: 'Cliente arquivado com sucesso.' });
         } catch (error) {
             console.error('[ClientController.archive]', error);
@@ -234,6 +259,7 @@ module.exports = {
             }
 
             await db.run('UPDATE clients SET archived = 0 WHERE id = ?', [id]);
+            await logActivity(db, req.userId, 'restore', 'client', id);
             return res.json({ message: 'Cliente restaurado com sucesso.' });
         } catch (error) {
             console.error('[ClientController.restore]', error);

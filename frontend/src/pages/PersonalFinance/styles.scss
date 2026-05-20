@@ -115,6 +115,12 @@ $line: #ece7df;
       min-height: 40px;
     }
 
+    .origin-label-input {
+      animation: revealOriginInput 160ms ease-out;
+      border-color: rgba($leaf-green, 0.45);
+      background: #fbfdf9;
+    }
+
     button {
       border: 0;
       border-radius: 8px;
@@ -237,6 +243,18 @@ $line: #ece7df;
   }
 }
 
+@keyframes revealOriginInput {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (max-width: 980px) {
   .personal-finance-container {
     .personal-summary,
@@ -257,6 +275,20 @@ $line: #ece7df;
         border: 1px solid $line;
         border-radius: 8px;
         padding: 12px;
+      }
+    }
+  }
+}
+
+body[data-theme='dark'] {
+  .personal-finance-container {
+    .panel form .origin-label-input {
+      background: #162019;
+      border-color: rgba(159, 223, 179, 0.38);
+      color: #f4f1ea;
+
+      &::placeholder {
+        color: #9c948a;
       }
     }
   }

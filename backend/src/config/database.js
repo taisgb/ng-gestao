@@ -261,6 +261,7 @@ const POSTGRES_SCHEMA = `
         status TEXT DEFAULT 'expected',
         payment_method TEXT,
         source TEXT DEFAULT 'manual',
+        origin_label TEXT,
         project_id INTEGER REFERENCES projects(id),
         team_id INTEGER REFERENCES teams(id),
         transaction_id INTEGER REFERENCES transactions(id),
@@ -298,9 +299,21 @@ const POSTGRES_SCHEMA = `
         document_id INTEGER NOT NULL REFERENCES documents(id),
         user_id INTEGER REFERENCES users(id),
         team_id INTEGER REFERENCES teams(id),
+        permission TEXT DEFAULT 'view',
         role TEXT DEFAULT 'viewer',
+        granted_by INTEGER REFERENCES users(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(document_id, user_id, team_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS activity_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER,
+        metadata TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 `;
 
@@ -443,6 +456,7 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'personal_transactions', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'personal_transactions', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
     await ensurePostgresColumn(db, 'personal_transactions', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+    await ensurePostgresColumn(db, 'personal_transactions', 'origin_label', 'TEXT');
     await ensurePostgresColumn(db, 'personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'personal_transactions', 'archived', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'documents', 'team_id', 'INTEGER REFERENCES teams(id)');
@@ -451,6 +465,8 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'documents', 'invoice_id', 'INTEGER REFERENCES invoices(id)');
     await ensurePostgresColumn(db, 'documents', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
     await ensurePostgresColumn(db, 'documents', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+    await ensurePostgresColumn(db, 'document_permissions', 'permission', "TEXT DEFAULT 'view'");
+    await ensurePostgresColumn(db, 'document_permissions', 'granted_by', 'INTEGER REFERENCES users(id)');
 
     await bootstrapSuperAdmin(db);
 
@@ -774,6 +790,7 @@ async function connectDb() {
             status TEXT DEFAULT 'expected',
             payment_method TEXT,
             source TEXT DEFAULT 'manual',
+            origin_label TEXT,
             project_id INTEGER,
             team_id INTEGER,
             transaction_id INTEGER,
@@ -871,6 +888,7 @@ async function connectDb() {
     await ensureColumn('personal_transactions', 'team_id', 'INTEGER');
     await ensureColumn('personal_transactions', 'transaction_id', 'INTEGER');
     await ensureColumn('personal_transactions', 'project_financial_entry_id', 'INTEGER');
+    await ensureColumn('personal_transactions', 'origin_label', 'TEXT');
     await ensureColumn('personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'updated_at', 'DATETIME');
@@ -893,14 +911,31 @@ async function connectDb() {
             document_id INTEGER NOT NULL,
             user_id INTEGER,
             team_id INTEGER,
+            permission TEXT DEFAULT 'view',
             role TEXT DEFAULT 'viewer',
+            granted_by INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(document_id, user_id, team_id),
             FOREIGN KEY (document_id) REFERENCES documents(id),
             FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (team_id) REFERENCES teams(id)
+            FOREIGN KEY (team_id) REFERENCES teams(id),
+            FOREIGN KEY (granted_by) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER,
+            metadata TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         );
     `);
+
+    await ensureColumn('document_permissions', 'permission', "TEXT DEFAULT 'view'");
+    await ensureColumn('document_permissions', 'granted_by', 'INTEGER');
 
     await bootstrapSuperAdmin(db);
 

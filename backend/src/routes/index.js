@@ -136,6 +136,7 @@ routes.delete('/invoices/:id', InvoiceController.destroy);
 routes.get('/documents', DocumentController.index);
 routes.post('/documents', DocumentController.create);
 routes.put('/documents/:id', DocumentController.update);
+routes.post('/documents/:id/share', DocumentController.share);
 routes.patch('/documents/:id/archive', DocumentController.archive);
 routes.patch('/documents/:id/restore', DocumentController.restore);
 routes.delete('/documents/:id', DocumentController.destroy);

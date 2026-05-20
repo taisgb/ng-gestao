@@ -22,7 +22,7 @@ export default function Agenda() {
   async function loadData() {
     try {
       const response = await api.get('/tasks?view=calendar');
-      setTasks(response.data);
+      setTasks(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao carregar calendario.');
     } finally {
@@ -58,10 +58,10 @@ export default function Agenda() {
   }, [visibleTasks]);
 
   async function handleStatus(task) {
-    const nextStatus = isDoneStatus(task.status) ? 'pendente' : 'concluido';
+    const nextStatus = isDoneStatus(task.status) ? 'pending' : 'done';
 
     try {
-      await api.put(`/tasks/${task.id}`, { status: nextStatus });
+      await api.patch(`/tasks/${task.id}/status`, { status: nextStatus });
       await loadData();
       setFeedback('Tarefa atualizada.');
     } catch (err) {
@@ -145,7 +145,7 @@ export default function Agenda() {
               })}
             </div>
           ))}
-          {visibleTasks.length === 0 && <p className="empty-msg">Nenhuma tarefa com prazo encontrada.</p>}
+          {visibleTasks.length === 0 && <p className="empty-msg">Nenhuma tarefa com prazo para exibir no calendario.</p>}
         </section>
       )}
     </div>

@@ -6,8 +6,10 @@ const {
     canEditTeamResource,
     canViewTeamResource,
     getProjectAccess: getSharedProjectAccess,
-    isProjectOwner
+    isProjectOwner,
+    sanitizeProjectForRole
 } = require('../utils/permissions');
+const { logActivity } = require('../utils/activityLog');
 
 const DEFAULT_STATUSES = ['pendente', 'aprovado', 'em andamento', 'concluído', 'garantia'];
 
@@ -232,15 +234,18 @@ module.exports = {
                 ORDER BY p.archived ASC, p.id DESC
             `, params);
 
-            return res.json(projects.map(project => {
-                const canSeeFinancials = ['owner', 'admin', 'gestor'].includes(project.access_role);
-                return {
+            const response = [];
+            for (const project of projects) {
+                const canSeeFinancials = await canViewProjectFinancials(db, req.userId, project.id);
+                response.push(sanitizeProjectForRole({
                     ...project,
                     can_view_financials: canSeeFinancials,
                     base_value: canSeeFinancials ? project.base_value : null,
                     amount_paid: canSeeFinancials ? project.amount_paid : null
-                };
-            }));
+                }, canSeeFinancials));
+            }
+
+            return res.json(response);
         } catch (error) {
             console.error('[ProjectController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar projetos.' });
@@ -270,14 +275,14 @@ module.exports = {
 
             const extraExpenses = expenses.total || 0;
             const totalProjectValue = project.base_value + extraExpenses;
-            const response = {
+            const response = sanitizeProjectForRole({
                 ...project,
                 can_view_financials: canSeeFinancials,
                 can_edit_financials: await canEditProjectFinancials(db, req.userId, id),
                 extra_expenses: canSeeFinancials ? extraExpenses : null,
                 total_value: canSeeFinancials ? totalProjectValue : null,
                 remaining_balance: canSeeFinancials ? totalProjectValue - project.amount_paid : null
-            };
+            }, canSeeFinancials);
 
             if (!canSeeFinancials) {
                 response.base_value = null;
@@ -476,6 +481,7 @@ module.exports = {
                 VALUES (?, ?, 0)
             `, [id, newOwnerId]);
 
+            await logActivity(db, req.userId, 'transfer_owner', 'project', id, { new_owner_id: newOwnerId });
             return res.json({
                 message: 'Dono do projeto atualizado.',
                 owner: newOwner
@@ -542,6 +548,7 @@ module.exports = {
             await db.run('DELETE FROM project_members WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
             await db.run('DELETE FROM project_financial_shares WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
 
+            await logActivity(db, req.userId, 'remove_member', 'project', projectId, { member_id: targetUserId });
             return res.json({ message: 'Membro removido do projeto.' });
         } catch (error) {
             console.error('[ProjectController.removeMember]', error);
@@ -797,6 +804,7 @@ module.exports = {
                 'UPDATE projects SET archived = 1, archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP) WHERE id = ?',
                 [id]
             );
+            await logActivity(db, req.userId, 'archive', 'project', id);
             return res.json({ message: 'Projeto arquivado.' });
         } catch (error) {
             console.error('[ProjectController.archive]', error);
@@ -816,6 +824,7 @@ module.exports = {
             }
 
             await db.run('UPDATE projects SET archived = 0, archived_at = NULL WHERE id = ?', [id]);
+            await logActivity(db, req.userId, 'restore', 'project', id);
             return res.json({ message: 'Projeto restaurado.' });
         } catch (error) {
             console.error('[ProjectController.restore]', error);

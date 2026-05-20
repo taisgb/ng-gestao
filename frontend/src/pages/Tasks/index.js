@@ -33,6 +33,16 @@ function isTaskDone(status) {
   return doneStatuses.includes(status) || String(status || '').toLowerCase().startsWith('conclu');
 }
 
+function formatTaskDate(date) {
+  if (!date) return 'Sem prazo';
+  return new Date(date).toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'UTC'
+  });
+}
+
 export default function Tasks() {
   const { user } = useAuth();
   const [tab, setTab] = useState('list');
@@ -55,6 +65,7 @@ export default function Tasks() {
       Object.entries(filters).forEach(([key, value]) => {
         if (value !== 'all') params.set(key, value);
       });
+      if (tab === 'calendar') params.set('view', 'calendar');
 
       const [tasksRes, projectsRes, teamsRes, summaryRes] = await Promise.all([
         api.get(`/tasks?${params.toString()}`),
@@ -63,20 +74,28 @@ export default function Tasks() {
         api.get('/tasks/summary')
       ]);
 
-      setTasks(tasksRes.data);
+      setTasks(Array.isArray(tasksRes.data) ? tasksRes.data : []);
       setProjects(projectsRes.data);
       setTeams(teamsRes.data);
       setSummary(summaryRes.data);
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao carregar tarefas.');
     }
-  }, [filters]);
+  }, [filters, tab]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   const calendarTasks = useMemo(() => tasks.filter(task => task.due_date), [tasks]);
+  const calendarEntries = useMemo(() => {
+    const groups = calendarTasks.reduce((acc, task) => ({
+      ...acc,
+      [task.due_date]: [...(acc[task.due_date] || []), task]
+    }), {});
+
+    return Object.entries(groups).sort(([dateA], [dateB]) => dateA.localeCompare(dateB));
+  }, [calendarTasks]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -265,7 +284,31 @@ export default function Tasks() {
         </section>
       ) : (
         <section className="calendar-panel">
-          {calendarTasks.map(renderTask)}
+          {calendarEntries.length > 0 ? (
+            <div className="calendar-grid">
+              {calendarEntries.map(([date, dateTasks]) => (
+                <article key={date} className="calendar-day-card">
+                  <header>
+                    <span>{formatTaskDate(date)}</span>
+                    <strong>{dateTasks.length}</strong>
+                  </header>
+                  <div className="calendar-day-tasks">
+                    {dateTasks.map(task => {
+                      const done = isTaskDone(task.status);
+
+                      return (
+                        <div key={task.id} className={`calendar-task-card ${task.priority} ${done ? 'done' : ''}`}>
+                          <strong>{task.title}</strong>
+                          <span>{task.project_title || task.client_name || sourceLabels[task.task_type] || 'Tarefa'}</span>
+                          <small>{done ? 'Concluida' : priorityLabels[task.priority] || task.priority}</small>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
           {calendarTasks.length === 0 && <p className="empty-msg">Nenhuma tarefa com prazo para exibir no calendário.</p>}
         </section>
       )}

@@ -89,11 +89,16 @@ $line: #ece7df;
     display: flex;
     flex-direction: column;
     gap: 18px;
+    min-height: 520px;
 
     .calendar-day {
+      background: #fff;
+      border: 1px solid $line;
+      border-radius: 8px;
       display: flex;
       flex-direction: column;
       gap: 10px;
+      padding: 14px;
 
       h2 {
         color: $earth-brown;
@@ -168,7 +173,15 @@ $line: #ece7df;
     }
 
     .empty-msg {
+      align-items: center;
+      border: 1px dashed $line;
+      border-radius: 8px;
       color: #888;
+      display: flex;
+      justify-content: center;
+      min-height: 260px;
+      padding: 20px;
+      text-align: center;
     }
   }
 }
@@ -186,6 +199,49 @@ $line: #ece7df;
     .tasks-board .task-card {
       align-items: flex-start;
       flex-direction: column;
+    }
+
+    .tasks-board {
+      min-height: 420px;
+    }
+  }
+}
+
+body[data-theme='dark'] {
+  .agenda-container {
+    .tasks-board {
+      .calendar-day {
+        background: #1d2822;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        h2 {
+          color: #f4f1ea;
+        }
+      }
+
+      .task-card {
+        background: #18211c;
+        border-color: rgba(255, 255, 255, 0.1);
+
+        strong {
+          color: #f4f1ea;
+        }
+
+        span {
+          color: #c8c1b7;
+        }
+
+        .task-tags small {
+          background: #162019;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: #f4f1ea;
+        }
+      }
+
+      .empty-msg {
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #c8c1b7;
+      }
     }
   }
 }

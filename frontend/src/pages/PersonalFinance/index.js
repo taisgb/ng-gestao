@@ -11,6 +11,7 @@ const emptyTransaction = {
   status: 'expected',
   payment_method: '',
   source: 'manual',
+  origin_label: '',
   notes: '',
   is_recurring: false
 };
@@ -19,12 +20,12 @@ const incomeCategories = ['Projeto', 'Servico recorrente', 'Consultoria', 'Distr
 const expenseCategories = ['Software', 'Assinaturas', 'Trafego pago', 'Equipamentos', 'Banco/cartao', 'Impostos', 'Hospedagem', 'Plugin', 'Dominio', 'Outros'];
 const statusLabels = { expected: 'previsto', paid: 'pago', overdue: 'atrasado', canceled: 'cancelado' };
 const sourceLabels = {
-  manual: 'manual',
   project: 'projeto',
   project_distribution: 'distribuicao',
   reimbursement: 'reembolso',
   renegotiation: 'renegociacao',
-  recurring: 'recorrente'
+  recurring: 'recorrente',
+  manual: 'Outro / Manual'
 };
 
 function parseCurrency(value) {
@@ -96,6 +97,11 @@ export default function PersonalFinance() {
   const categories = transactionForm.type === 'income' ? incomeCategories : expenseCategories;
   const incomeRows = useMemo(() => transactions.filter(item => item.type === 'income'), [transactions]);
   const expenseRows = useMemo(() => transactions.filter(item => item.type === 'expense'), [transactions]);
+  const isManualOrigin = transactionForm.source === 'manual';
+
+  function formatSource(item) {
+    return item.origin_label || sourceLabels[item.source] || item.source || '-';
+  }
 
   function resetTransactionForm() {
     setTransactionForm(emptyTransaction);
@@ -113,6 +119,7 @@ export default function PersonalFinance() {
       status: item.status || 'expected',
       payment_method: item.payment_method || '',
       source: item.source || 'manual',
+      origin_label: item.origin_label || '',
       notes: item.notes || '',
       is_recurring: Boolean(item.is_recurring)
     });
@@ -125,6 +132,7 @@ export default function PersonalFinance() {
     const payload = {
       ...transactionForm,
       amount: parseCurrency(transactionForm.amount),
+      origin_label: transactionForm.source === 'manual' ? transactionForm.origin_label.trim() : '',
       is_recurring: transactionForm.is_recurring ? 1 : 0
     };
 
@@ -217,7 +225,7 @@ export default function PersonalFinance() {
           <span>Data</span>
           <span>Descricao</span>
           <span>Categoria</span>
-          <span>{kind === 'income' ? 'Origem' : 'Forma'}</span>
+          <span>{kind === 'income' ? 'Origem' : 'Origem/Forma'}</span>
           <span>Status</span>
           <span>Valor</span>
           <span>Acoes</span>
@@ -227,7 +235,7 @@ export default function PersonalFinance() {
             <span>{formatDate(item.date)}</span>
             <strong>{item.description}</strong>
             <span>{item.category}</span>
-            <span>{kind === 'income' ? sourceLabels[item.source] || item.source : item.payment_method || '-'}</span>
+            <span>{kind === 'income' ? formatSource(item) : item.payment_method || formatSource(item)}</span>
             <span className={`status ${item.status}`}>{statusLabels[item.status] || item.status}</span>
             <strong>{formatCurrency(item.amount)}</strong>
             <div className="row-actions">
@@ -305,9 +313,24 @@ export default function PersonalFinance() {
               {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
             <input value={transactionForm.payment_method} onChange={e => setTransactionForm({ ...transactionForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
-            <select value={transactionForm.source} onChange={e => setTransactionForm({ ...transactionForm, source: e.target.value })}>
+            <select
+              value={transactionForm.source}
+              onChange={e => setTransactionForm({
+                ...transactionForm,
+                source: e.target.value,
+                origin_label: e.target.value === 'manual' ? transactionForm.origin_label : ''
+              })}
+            >
               {Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
+            {isManualOrigin && (
+              <input
+                className="origin-label-input"
+                value={transactionForm.origin_label}
+                onChange={e => setTransactionForm({ ...transactionForm, origin_label: e.target.value })}
+                placeholder="Nome da origem"
+              />
+            )}
             <input value={transactionForm.notes} onChange={e => setTransactionForm({ ...transactionForm, notes: e.target.value })} placeholder="Observacao" />
             <label className="checkbox-line">
               <input type="checkbox" checked={transactionForm.is_recurring} onChange={e => setTransactionForm({ ...transactionForm, is_recurring: e.target.checked })} />

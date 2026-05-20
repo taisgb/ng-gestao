@@ -9,6 +9,24 @@ function normalizeBoolean(value) {
     return value === true || value === 1 || value === '1' ? 1 : 0;
 }
 
+function normalizeSource(body = {}) {
+    return body.source || body.origin_type || 'manual';
+}
+
+function normalizeOriginLabel(source, value) {
+    if (source !== 'manual') return null;
+    const label = String(value || '').trim();
+    return label || null;
+}
+
+function serializeTransaction(row) {
+    if (!row) return row;
+    return {
+        ...row,
+        origin_type: row.source
+    };
+}
+
 function currentYearMonth(query = {}) {
     const today = new Date();
     const month = String(query.month || today.getMonth() + 1).padStart(2, '0');
@@ -54,7 +72,9 @@ function validatePayload(body, partial = false) {
     }
 
     if (body.status !== undefined && !STATUSES.includes(body.status)) errors.push('Status invalido.');
-    if (body.source !== undefined && !SOURCES.includes(body.source)) errors.push('Origem invalida.');
+
+    const hasSource = body.source !== undefined || body.origin_type !== undefined;
+    if (hasSource && !SOURCES.includes(normalizeSource(body))) errors.push('Origem invalida.');
 
     return errors;
 }
@@ -88,10 +108,10 @@ async function syncFromProjectFinancialEntry(db, entry) {
 
     const result = await db.run(`
         INSERT INTO personal_transactions (
-            user_id, type, description, category, amount, date, status, payment_method, source,
+            user_id, type, description, category, amount, date, status, payment_method, source, origin_label,
             project_id, team_id, project_financial_entry_id, notes, is_recurring, archived, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
     `, [
         entry.user_id,
         type,
@@ -101,6 +121,7 @@ async function syncFromProjectFinancialEntry(db, entry) {
         entry.date,
         entry.payment_method || null,
         source,
+        null,
         entry.project_id || null,
         entry.team_id || null,
         entry.id,
@@ -148,7 +169,7 @@ module.exports = {
             query += ' ORDER BY date DESC, id DESC';
 
             const transactions = await db.all(query, params);
-            return res.json(transactions);
+            return res.json(transactions.map(serializeTransaction));
         } catch (error) {
             console.error('[PersonalTransactionController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar lancamentos pessoais.' });
@@ -161,12 +182,14 @@ module.exports = {
             if (errors.length > 0) return res.status(400).json({ error: errors[0] });
 
             const db = await connectDb();
+            const source = normalizeSource(req.body);
+            const originLabel = normalizeOriginLabel(source, req.body.origin_label);
             const result = await db.run(`
                 INSERT INTO personal_transactions (
                     user_id, type, description, category, amount, date, status, payment_method,
-                    source, project_id, team_id, notes, is_recurring, archived, updated_at
+                    source, origin_label, project_id, team_id, notes, is_recurring, archived, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
             `, [
                 req.userId,
                 req.body.type,
@@ -176,7 +199,8 @@ module.exports = {
                 req.body.date,
                 req.body.status || 'expected',
                 req.body.payment_method || null,
-                req.body.source || 'manual',
+                source,
+                originLabel,
                 req.body.project_id || null,
                 req.body.team_id || null,
                 req.body.notes || null,
@@ -200,31 +224,40 @@ module.exports = {
             const errors = validatePayload(req.body, true);
             if (errors.length > 0) return res.status(400).json({ error: errors[0] });
 
+            const nextSource = req.body.source !== undefined || req.body.origin_type !== undefined
+                ? normalizeSource(req.body)
+                : transaction.source || 'manual';
+            const nextOriginLabel = req.body.origin_label !== undefined || nextSource !== transaction.source
+                ? normalizeOriginLabel(nextSource, req.body.origin_label)
+                : transaction.origin_label || null;
+
             await db.run(`
                 UPDATE personal_transactions
-                SET type = COALESCE(?, type),
-                    description = COALESCE(?, description),
-                    category = COALESCE(?, category),
-                    amount = COALESCE(?, amount),
-                    date = COALESCE(?, date),
-                    status = COALESCE(?, status),
-                    payment_method = COALESCE(?, payment_method),
-                    source = COALESCE(?, source),
-                    notes = COALESCE(?, notes),
-                    is_recurring = COALESCE(?, is_recurring),
+                SET type = ?,
+                    description = ?,
+                    category = ?,
+                    amount = ?,
+                    date = ?,
+                    status = ?,
+                    payment_method = ?,
+                    source = ?,
+                    origin_label = ?,
+                    notes = ?,
+                    is_recurring = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND user_id = ?
             `, [
-                req.body.type,
-                req.body.description === undefined ? null : req.body.description.trim(),
-                req.body.category === undefined ? null : req.body.category.trim(),
-                req.body.amount === undefined ? null : toMoney(req.body.amount),
-                req.body.date,
-                req.body.status,
-                req.body.payment_method,
-                req.body.source,
-                req.body.notes,
-                req.body.is_recurring === undefined ? null : normalizeBoolean(req.body.is_recurring),
+                req.body.type ?? transaction.type,
+                req.body.description === undefined ? transaction.description : req.body.description.trim(),
+                req.body.category === undefined ? transaction.category : req.body.category.trim(),
+                req.body.amount === undefined ? transaction.amount : toMoney(req.body.amount),
+                req.body.date === undefined ? transaction.date : req.body.date,
+                req.body.status === undefined ? transaction.status : req.body.status,
+                req.body.payment_method === undefined ? transaction.payment_method : req.body.payment_method || null,
+                nextSource,
+                nextOriginLabel,
+                req.body.notes === undefined ? transaction.notes : req.body.notes || null,
+                req.body.is_recurring === undefined ? transaction.is_recurring : normalizeBoolean(req.body.is_recurring),
                 id,
                 req.userId
             ]);

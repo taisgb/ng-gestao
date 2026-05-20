@@ -2,11 +2,16 @@ const connectDb = require('../config/database');
 const { isNonEmptyString } = require('../utils/validators');
 const {
     canEditProjectFinancials,
+    canEditDocument,
     canEditTeamResource,
+    canShareDocument,
+    canViewDocument,
     canViewProjectFinancials,
     canViewTeamResource,
-    getProjectAccess
+    getProjectAccess,
+    sanitizeDocumentForRole
 } = require('../utils/permissions');
+const { logActivity } = require('../utils/activityLog');
 
 const PROVIDERS = ['drive', 'external', 'other'];
 const TYPES = ['invoice', 'receipt', 'contract', 'briefing', 'artwork', 'image', 'boleto', 'folder', 'other'];
@@ -74,9 +79,12 @@ async function getDocumentAccess(db, documentId, userId) {
     `, [documentId]);
 
     if (!document) return null;
-    const access = await resolveAccess(db, userId, document);
-    if (!access.can_view) return null;
-    return { ...document, ...access };
+    if (!await canViewDocument(db, userId, document)) return null;
+    return {
+        ...document,
+        can_view: true,
+        can_edit: await canEditDocument(db, userId, document)
+    };
 }
 
 async function resolveAccess(db, userId, payload) {
@@ -155,12 +163,13 @@ module.exports = {
             const db = await connectDb();
             const status = normalizeStatus(req.query.status);
             const filters = ['team_id', 'client_id', 'project_id', 'invoice_id', 'document_type', 'provider'];
-            const params = [req.userId, req.userId, status, status, status];
+            const params = [req.userId, req.userId, req.userId, status, status, status];
             let query = `
                 SELECT d.*, t.name as team_name, c.name as client_name, p.title as project_title, i.number as invoice_number,
                        CASE
                            WHEN d.team_id IS NULL AND d.user_id = ? THEN 1
                            WHEN tm.role IN ('owner', 'admin', 'gestor') THEN 1
+                           WHEN COALESCE(dp.permission, dp.role) IN ('edit', 'manage') THEN 1
                            ELSE 0
                        END as can_edit
                 FROM documents d
@@ -169,12 +178,13 @@ module.exports = {
                 LEFT JOIN projects p ON p.id = d.project_id
                 LEFT JOIN invoices i ON i.id = d.invoice_id
                 LEFT JOIN team_members tm ON tm.team_id = d.team_id AND tm.user_id = ? AND tm.status = 'active'
+                LEFT JOIN document_permissions dp ON dp.document_id = d.id AND dp.user_id = ?
                 WHERE (
                     (? = 'active' AND d.archived = 0)
                     OR (? = 'archived' AND d.archived = 1)
                     OR ? = 'all'
                 )
-                AND ((d.team_id IS NULL AND d.user_id = ?) OR tm.user_id IS NOT NULL)
+                AND ((d.team_id IS NULL AND d.user_id = ?) OR tm.user_id IS NOT NULL OR dp.user_id IS NOT NULL)
             `;
             params.push(req.userId);
 
@@ -188,7 +198,17 @@ module.exports = {
             query += ' ORDER BY d.created_at DESC, d.id DESC';
 
             const documents = await db.all(query, params);
-            return res.json(documents);
+            const visibleDocuments = [];
+            for (const document of documents) {
+                if (await canViewDocument(db, req.userId, document)) {
+                    visibleDocuments.push(sanitizeDocumentForRole({
+                        ...document,
+                        can_edit: await canEditDocument(db, req.userId, document)
+                    }));
+                }
+            }
+
+            return res.json(visibleDocuments);
         } catch (error) {
             console.error('[DocumentController.index]', error);
             return res.status(500).json({ error: 'Erro ao listar documentos.' });
@@ -230,6 +250,7 @@ module.exports = {
                 req.body.size || null
             ]);
 
+            await logActivity(db, req.userId, 'create', 'document', result.lastID, { team_id: teamId });
             return res.status(201).json({ id: result.lastID, message: 'Documento cadastrado.' });
         } catch (error) {
             console.error('[DocumentController.create]', error);
@@ -300,6 +321,7 @@ module.exports = {
                 req.params.id
             ]);
 
+            await logActivity(db, req.userId, 'update', 'document', req.params.id);
             return res.json({ message: 'Documento atualizado.' });
         } catch (error) {
             console.error('[DocumentController.update]', error);
@@ -314,6 +336,7 @@ module.exports = {
             if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para arquivar documento.' });
 
             await db.run('UPDATE documents SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+            await logActivity(db, req.userId, 'archive', 'document', req.params.id);
             return res.json({ message: 'Documento arquivado.' });
         } catch (error) {
             console.error('[DocumentController.archive]', error);
@@ -328,6 +351,7 @@ module.exports = {
             if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para restaurar documento.' });
 
             await db.run('UPDATE documents SET archived = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+            await logActivity(db, req.userId, 'restore', 'document', req.params.id);
             return res.json({ message: 'Documento restaurado.' });
         } catch (error) {
             console.error('[DocumentController.restore]', error);
@@ -337,6 +361,43 @@ module.exports = {
 
     async destroy(req, res) {
         return module.exports.archive(req, res);
+    },
+
+    async share(req, res) {
+        try {
+            const db = await connectDb();
+            const document = await getDocumentAccess(db, req.params.id, req.userId);
+            if (!document || !await canShareDocument(db, req.userId, document)) {
+                return res.status(403).json({ error: 'Sem permissao para compartilhar documento.' });
+            }
+
+            const userId = Number(req.body.user_id);
+            const permission = ['view', 'edit', 'manage'].includes(req.body.permission)
+                ? req.body.permission
+                : 'view';
+
+            if (!Number.isInteger(userId) || userId <= 0) {
+                return res.status(400).json({ error: 'Usuario invalido para compartilhamento.' });
+            }
+
+            const target = await db.get('SELECT id FROM users WHERE id = ?', [userId]);
+            if (!target) return res.status(404).json({ error: 'Usuario nao encontrado.' });
+
+            await db.run(`
+                INSERT INTO document_permissions (document_id, user_id, permission, role, granted_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(document_id, user_id, team_id) DO UPDATE SET
+                    permission = excluded.permission,
+                    role = excluded.role,
+                    granted_by = excluded.granted_by
+            `, [req.params.id, userId, permission, permission, req.userId]);
+
+            await logActivity(db, req.userId, 'share', 'document', req.params.id, { user_id: userId, permission });
+            return res.status(201).json({ message: 'Documento compartilhado.' });
+        } catch (error) {
+            console.error('[DocumentController.share]', error);
+            return res.status(500).json({ error: 'Erro ao compartilhar documento.' });
+        }
     },
 
     async byProject(req, res) {

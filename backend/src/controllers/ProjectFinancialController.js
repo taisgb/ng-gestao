@@ -8,6 +8,7 @@ const {
 } = require('../utils/permissions');
 const PersonalTransactionController = require('./PersonalTransactionController');
 const { calculateProjectFinancialSummary } = require('../services/projectFinancialSummary');
+const { logActivity } = require('../utils/activityLog');
 
 const TYPES = ['income', 'expense', 'reimbursement', 'received_payment', 'scope_adjustment', 'scope_increase', 'operational_cost', 'transfer'];
 const STATUSES = ['pending', 'paid', 'reimbursed', 'canceled'];
@@ -167,6 +168,7 @@ module.exports = {
             const entry = await db.get('SELECT * FROM project_financial_entries WHERE id = ?', [result.lastID]);
             await syncPersonalTransaction(db, entry);
 
+            await logActivity(db, req.userId, 'create_financial_entry', 'project', id, { entry_id: result.lastID, type });
             return res.status(201).json({ id: result.lastID, message: 'Lancamento do projeto criado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.create]', error);
@@ -244,6 +246,7 @@ module.exports = {
             const updated = await getEntry(db, id, entryId);
             await syncPersonalTransaction(db, updated);
 
+            await logActivity(db, req.userId, 'update_financial_entry', 'project', id, { entry_id: entryId });
             return res.json({ message: 'Lancamento atualizado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.update]', error);
@@ -276,6 +279,7 @@ module.exports = {
             const updated = await getEntry(db, id, entryId);
             await syncPersonalTransaction(db, updated);
 
+            await logActivity(db, req.userId, 'update_financial_status', 'project', id, { entry_id: entryId, status });
             return res.json({ message: 'Status atualizado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.updateStatus]', error);
@@ -299,6 +303,7 @@ module.exports = {
             `, [entryId, id]);
 
             if (result.changes === 0) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            await logActivity(db, req.userId, 'archive_financial_entry', 'project', id, { entry_id: entryId });
             return res.json({ message: 'Lancamento arquivado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.destroy]', error);

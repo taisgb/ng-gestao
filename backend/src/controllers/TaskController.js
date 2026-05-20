@@ -2,6 +2,8 @@ const connectDb = require('../config/database');
 const { isDate, isNonEmptyString } = require('../utils/validators');
 const {
     canEditProjectFinancials,
+    canCompleteTask,
+    canEditTask,
     canEditTeamResource,
     canViewProjectFinancials,
     getProjectAccess,
@@ -476,8 +478,18 @@ module.exports = {
             const db = await connectDb();
             const task = await getTask(db, id);
 
-            if (!(await canAccessTaskRow(db, task, req.userId, true))) {
+            if (!(await canAccessTaskRow(db, task, req.userId, false))) {
                 return res.status(404).json({ error: 'Tarefa nao encontrada ou sem permissao.' });
+            }
+
+            const requestedFields = Object.keys(req.body);
+            const statusOnly = requestedFields.length === 1 && requestedFields[0] === 'status';
+            const canUpdate = statusOnly
+                ? await canCompleteTask(db, req.userId, task)
+                : await canEditTask(db, req.userId, task);
+
+            if (!canUpdate) {
+                return res.status(403).json({ error: 'Sem permissao para alterar esta tarefa.' });
             }
 
             const fields = [];
@@ -576,7 +588,7 @@ module.exports = {
             const db = await connectDb();
             const task = await getTask(db, id);
 
-            if (!(await canAccessTaskRow(db, task, req.userId, true))) {
+            if (!(await canEditTask(db, req.userId, task))) {
                 return res.status(404).json({ error: 'Tarefa nao encontrada ou sem permissao.' });
             }
 

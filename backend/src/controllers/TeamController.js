@@ -1,6 +1,16 @@
 const connectDb = require('../config/database');
 const { isEmail, isNonEmptyString, normalizeEmail } = require('../utils/validators');
-const { TEAM_ROLES, canManageTeam, canManageTeamMembers, getTeamRole, isTeamMember } = require('../utils/permissions');
+const {
+    TEAM_ROLES,
+    canArchiveTeam,
+    canChangeTeamRole,
+    canEditTeam,
+    canInviteTeamMember,
+    canManageTeamMembers,
+    getTeamRole,
+    isTeamMember
+} = require('../utils/permissions');
+const { logActivity } = require('../utils/activityLog');
 
 module.exports = {
     async index(req, res) {
@@ -79,7 +89,7 @@ module.exports = {
             const { name, description } = req.body;
             const db = await connectDb();
 
-            if (!await canManageTeam(db, req.userId, id)) {
+            if (!await canEditTeam(db, req.userId, id)) {
                 return res.status(403).json({ error: 'Sem permissao para editar este time.' });
             }
 
@@ -112,11 +122,12 @@ module.exports = {
             const db = await connectDb();
             const role = await getTeamRole(db, req.userId, id);
 
-            if (role !== 'owner') {
+            if (!await canArchiveTeam(db, req.userId, id)) {
                 return res.status(403).json({ error: 'Apenas owner pode arquivar o time.' });
             }
 
             await db.run('UPDATE teams SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+            await logActivity(db, req.userId, 'archive', 'team', id);
             return res.json({ message: 'Time arquivado.' });
         } catch (error) {
             console.error('[TeamController.archive]', error);
@@ -130,11 +141,12 @@ module.exports = {
             const db = await connectDb();
             const role = await getTeamRole(db, req.userId, id);
 
-            if (role !== 'owner') {
+            if (!await canArchiveTeam(db, req.userId, id)) {
                 return res.status(403).json({ error: 'Apenas owner pode restaurar o time.' });
             }
 
             await db.run('UPDATE teams SET archived = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+            await logActivity(db, req.userId, 'restore', 'team', id);
             return res.json({ message: 'Time restaurado.' });
         } catch (error) {
             console.error('[TeamController.restore]', error);
@@ -155,7 +167,7 @@ module.exports = {
                 FROM team_members tm
                 LEFT JOIN users u ON u.id = tm.user_id
                 WHERE tm.team_id = ? AND tm.status != 'removed'
-                ORDER BY CASE tm.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 WHEN 'gestor' THEN 3 ELSE 4 END, tm.email ASC
+                ORDER BY CASE tm.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 WHEN 'gestor' THEN 3 WHEN 'financeiro' THEN 4 ELSE 5 END, tm.email ASC
             `, [id]);
 
             return res.json(members);
@@ -172,7 +184,7 @@ module.exports = {
             const role = req.body.role || 'member';
             const db = await connectDb();
 
-            if (!await canManageTeamMembers(db, req.userId, id)) {
+            if (!await canInviteTeamMember(db, req.userId, id)) {
                 return res.status(403).json({ error: 'Sem permissao para gerenciar membros.' });
             }
 
@@ -204,6 +216,7 @@ module.exports = {
                 `, [id, email, req.userId]);
             }
 
+            await logActivity(db, req.userId, 'invite_member', 'team', id, { email, role, status });
             return res.status(201).json({ message: user ? 'Membro adicionado.' : 'Convite pendente registrado.' });
         } catch (error) {
             console.error('[TeamController.addMember]', error);
@@ -225,6 +238,10 @@ module.exports = {
             if (!member) return res.status(404).json({ error: 'Membro nao encontrado.' });
             if (member.role === 'owner') return res.status(403).json({ error: 'Nao e permitido alterar owner por aqui.' });
 
+            if (role !== undefined && !await canChangeTeamRole(db, req.userId, id, role)) {
+                return res.status(403).json({ error: 'Sem permissao para alterar para este papel.' });
+            }
+
             if (role !== undefined && (!TEAM_ROLES.includes(role) || role === 'owner')) {
                 return res.status(400).json({ error: 'Papel invalido.' });
             }
@@ -237,6 +254,7 @@ module.exports = {
                 WHERE id = ? AND team_id = ?
             `, [role, status, memberId, id]);
 
+            await logActivity(db, req.userId, 'change_member_role', 'team', id, { member_id: memberId, role, status });
             return res.json({ message: 'Membro atualizado.' });
         } catch (error) {
             console.error('[TeamController.updateMember]', error);
@@ -258,6 +276,7 @@ module.exports = {
             if (member.role === 'owner') return res.status(403).json({ error: 'Nao e permitido remover owner.' });
 
             await db.run("UPDATE team_members SET status = 'removed', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [memberId]);
+            await logActivity(db, req.userId, 'remove_member', 'team', id, { member_id: memberId });
             return res.json({ message: 'Membro removido.' });
         } catch (error) {
             console.error('[TeamController.removeMember]', error);
