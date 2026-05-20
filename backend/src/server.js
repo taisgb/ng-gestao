@@ -12,10 +12,28 @@ const WebhookController = require('./controllers/WebhookController');
 const app = express();
 app.disable('x-powered-by');
 
-const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+function normalizeOrigin(origin) {
+    if (!origin) return '';
+
+    try {
+        const parsed = new URL(origin.trim());
+        return parsed.origin;
+    } catch {
+        return origin.trim().replace(/\/$/, '');
+    }
+}
+
+const configuredOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([
+    ...configuredOrigins,
+    process.env.FRONTEND_URL,
+    'https://ng-gestao.vercel.app',
+    'https://ng-gestao-zdmz.onrender.com'
+].filter(Boolean).map(origin => origin === '*' ? '*' : normalizeOrigin(origin))));
 
 const corsOptions = {
     origin(origin, callback) {
@@ -23,15 +41,18 @@ const corsOptions = {
             return callback(null, true);
         }
 
+        const normalizedOrigin = normalizeOrigin(origin);
+
         if (allowedOrigins.includes('*')) {
             return callback(null, true);
         }
 
-        if (allowedOrigins.includes(origin)) {
+        if (allowedOrigins.includes(normalizedOrigin)) {
             return callback(null, true);
         }
 
-        return callback(new Error(`Origem nao permitida pelo CORS: ${origin}`));
+        console.warn(`Origem nao permitida pelo CORS: ${origin}`);
+        return callback(null, false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -40,6 +61,12 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
+app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+    return next();
+});
 app.use(securityHeaders);
 
 // 2.  ROTA DO WEBHOOK 

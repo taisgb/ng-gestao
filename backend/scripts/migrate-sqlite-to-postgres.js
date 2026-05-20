@@ -120,6 +120,9 @@ async function syncSequence(pgDb, table) {
 async function ensureSuperAdmin(pgDb) {
     const email = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
     const password = process.env.SUPER_ADMIN_PASSWORD;
+    const firstName = (process.env.SUPER_ADMIN_NAME || 'Super').trim();
+    const lastName = (process.env.SUPER_ADMIN_LAST_NAME || 'Admin').trim();
+    const fullName = `${firstName} ${lastName}`.trim();
 
     if (!email || !password) return;
 
@@ -127,15 +130,15 @@ async function ensureSuperAdmin(pgDb) {
     const existing = await pgDb.get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
         await pgDb.run(
-            "UPDATE users SET password = ?, plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
-            [passwordHash, existing.id]
+            "UPDATE users SET name = ?, password = ?, plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
+            [fullName, passwordHash, existing.id]
         );
         return;
     }
 
     await pgDb.run(
         "INSERT INTO users (name, email, password, plan, role, is_super_admin) VALUES (?, ?, ?, 'admin', 'owner', 1)",
-        ['Super Admin', email, passwordHash]
+        [fullName, email, passwordHash]
     );
 }
 

@@ -357,6 +357,9 @@ async function ensurePostgresColumn(db, table, name, type) {
 async function bootstrapSuperAdmin(db) {
     const email = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
     const password = process.env.SUPER_ADMIN_PASSWORD;
+    const firstName = (process.env.SUPER_ADMIN_NAME || 'Super').trim();
+    const lastName = (process.env.SUPER_ADMIN_LAST_NAME || 'Admin').trim();
+    const fullName = `${firstName} ${lastName}`.trim();
 
     if (!email || !password) return;
 
@@ -364,15 +367,15 @@ async function bootstrapSuperAdmin(db) {
     const existing = await db.get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
         await db.run(
-            "UPDATE users SET password = ?, plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
-            [passwordHash, existing.id]
+            "UPDATE users SET name = ?, password = ?, plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
+            [fullName, passwordHash, existing.id]
         );
         return;
     }
 
     await db.run(
         "INSERT INTO users (name, email, password, plan, role, is_super_admin) VALUES (?, ?, ?, 'admin', 'owner', 1)",
-        ['Super Admin', email, passwordHash]
+        [fullName, email, passwordHash]
     );
 }
 
