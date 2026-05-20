@@ -124,7 +124,11 @@ function applyTaskFilters(tasks, query = {}) {
         }
 
         if (query.scope && query.scope !== 'all') {
-            if (query.scope === 'mine' && task.assigned_to && Number(task.assigned_to) !== Number(task.current_user_id)) {
+            if (
+                query.scope === 'mine' &&
+                task.assigned_to &&
+                Number(task.assigned_to) !== Number(task.current_user_id)
+            ) {
                 return false;
             }
 
@@ -449,42 +453,78 @@ module.exports = {
                 return res.status(404).json({ error: 'Tarefa nao encontrada ou sem permissao.' });
             }
 
-            const nextStatus = req.body.status === undefined ? null : normalizeStatus(req.body.status);
-            const doneAt = nextStatus && isDone(nextStatus) ? new Date().toISOString() : null;
+            const fields = [];
+            const params = [];
+
+            function addField(column, value, cast = null) {
+                if (value !== undefined) {
+                    params.push(value);
+
+                    const placeholder = cast
+                        ? `CAST(? AS ${cast})`
+                        : '?';
+
+                    fields.push(`${column} = ${placeholder}`);
+                }
+            }
+
+            if (req.body.title !== undefined) {
+                addField('title', req.body.title || null, 'TEXT');
+            }
+
+            if (req.body.description !== undefined) {
+                addField('description', req.body.description || null, 'TEXT');
+            }
+
+            if (req.body.task_type !== undefined) {
+                addField('task_type', normalizeType(req.body.task_type), 'TEXT');
+            }
+
+            if (req.body.priority !== undefined) {
+                addField(
+                    'priority',
+                    PRIORITIES.includes(req.body.priority) ? req.body.priority : 'medium',
+                    'TEXT'
+                );
+            }
+
+            if (req.body.status !== undefined) {
+                const nextStatus = normalizeStatus(req.body.status);
+
+                addField('status', nextStatus, 'TEXT');
+
+                if (isDone(nextStatus)) {
+                    addField('completed_at', new Date().toISOString(), 'TEXT');
+                } else if (nextStatus === 'pendente') {
+                    fields.push('completed_at = NULL');
+                }
+            }
+
+            if (req.body.due_date !== undefined) {
+                addField('due_date', req.body.due_date || null, 'TEXT');
+            }
+
+            if (req.body.assigned_to !== undefined) {
+                const assignedTo = req.body.assigned_to || null;
+
+                addField('assigned_to', assignedTo, 'INTEGER');
+                addField('user_id', assignedTo, 'INTEGER');
+            }
+
+            if (!fields.length) {
+                return res.json({ message: 'Nenhuma alteração enviada.' });
+            }
+
+            fields.push('updated_at = CURRENT_TIMESTAMP');
+            params.push(Number(id));
 
             await db.run(
                 `
                 UPDATE tasks
-                SET title = COALESCE(?, title),
-                    description = COALESCE(?, description),
-                    task_type = COALESCE(?, task_type),
-                    priority = COALESCE(?, priority),
-                    status = COALESCE(?, status),
-                    due_date = COALESCE(?, due_date),
-                    assigned_to = COALESCE(?, assigned_to),
-                    user_id = COALESCE(?, user_id),
-                    completed_at = CASE 
-                        WHEN ? IS NOT NULL THEN ? 
-                        WHEN ? = 'pendente' THEN NULL 
-                        ELSE completed_at 
-                    END,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                SET ${fields.join(', ')}
+                WHERE id = CAST(? AS INTEGER)
                 `,
-                [
-                    req.body.title || null,
-                    req.body.description || null,
-                    req.body.task_type ? normalizeType(req.body.task_type) : null,
-                    PRIORITIES.includes(req.body.priority) ? req.body.priority : null,
-                    nextStatus,
-                    req.body.due_date || null,
-                    req.body.assigned_to || null,
-                    req.body.assigned_to || null,
-                    doneAt,
-                    doneAt,
-                    nextStatus,
-                    id
-                ]
+                params
             );
 
             return res.json({ message: 'Tarefa atualizada.' });
