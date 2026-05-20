@@ -11,22 +11,36 @@ const WebhookController = require('./controllers/WebhookController');
 
 const app = express();
 app.disable('x-powered-by');
-app.use(securityHeaders);
 
 const allowedOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);
 
-app.use(cors({
+const corsOptions = {
     origin(origin, callback) {
-        if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        if (!origin) {
             return callback(null, true);
         }
 
-        return callback(new Error('Origem nao permitida pelo CORS.'));
-    }
-}));
+        if (allowedOrigins.includes('*')) {
+            return callback(null, true);
+        }
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error(`Origem nao permitida pelo CORS: ${origin}`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
+app.use(securityHeaders);
 
 // 2.  ROTA DO WEBHOOK 
 app.post('/webhook', express.raw({ type: 'application/json' }), WebhookController.handle);
