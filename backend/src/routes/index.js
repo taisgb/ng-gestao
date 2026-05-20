@@ -89,6 +89,7 @@ routes.get('/projects/:id/financial-entries', ProjectFinancialController.index);
 routes.post('/projects/:id/financial-entries', ProjectFinancialController.create);
 routes.put('/projects/:id/financial-entries/:entryId', ProjectFinancialController.update);
 routes.patch('/projects/:id/financial-entries/:entryId/status', ProjectFinancialController.updateStatus);
+routes.patch('/projects/:id/financial-entries/:entryId/restore', ProjectFinancialController.restore);
 routes.delete('/projects/:id/financial-entries/:entryId', ProjectFinancialController.destroy);
 routes.get('/projects/:id/statuses', ProjectController.statuses);
 routes.post('/projects/:id/statuses', ProjectController.createStatus);

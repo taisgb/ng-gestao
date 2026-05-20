@@ -224,18 +224,87 @@ test('project finance summary calculates scope changes, payments, expenses and r
         const summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
 
         assert.equal(summary.base_contract_value, 4500);
-        assert.equal(summary.additional_income, 4500);
-        assert.equal(summary.updated_total_value, 9000);
-        assert.equal(summary.updated_value, 9000);
+        assert.equal(summary.additional_income, 2500);
+        assert.equal(summary.updated_total_value, 7000);
+        assert.equal(summary.updated_value, 7000);
         assert.equal(summary.total_received, 5800);
         assert.equal(summary.received, 5800);
-        assert.equal(summary.total_pending, 3200);
+        assert.equal(summary.total_pending, 1200);
         assert.equal(summary.total_expenses, 800);
         assert.equal(summary.expenses, 800);
         assert.equal(summary.reimbursable_expenses, 0);
         assert.equal(summary.reimbursed_amount, 300);
-        assert.equal(summary.estimated_net_balance, 8200);
-        assert.equal(summary.net_balance, 8200);
+        assert.equal(summary.estimated_net_balance, 6200);
+        assert.equal(summary.net_balance, 6200);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project finance engine separates gross revenue, transfers, reimbursements and real profit', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run('UPDATE projects SET base_value = 0 WHERE id = ?', [seeded.projectId]);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, own_amount, transfer_amount, date, payment_due_date, status,
+                affects_project_total, affects_my_financial, affects_personal_finance
+            )
+            VALUES (?, ?, ?, ?, 'revenue', 'revenue', 'NF equipe', 'NF', 4800, 4800, 1400, 3400, '2026-05-20', '2026-06-10', 'paid', 1, 1, 1)
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, transfer_amount, date, status
+            )
+            VALUES (?, ?, ?, ?, 'transfer', 'transfer', 'Repasse designers', 'Repasse', 3400, 3400, 3400, '2026-06-11', 'pending')
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        let summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
+        assert.equal(summary.gross_revenue, 4800);
+        assert.equal(summary.transfers_total, 3400);
+        assert.equal(summary.own_amount, 1400);
+        assert.equal(summary.pending_transfer, 3400);
+
+        await db.run("UPDATE project_financial_entries SET status = 'paid' WHERE financial_type = 'transfer' AND project_id = ?", [seeded.projectId]);
+        summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
+        assert.equal(summary.pending_transfer, 0);
+        assert.equal(summary.net_balance, 1400);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('reimbursable and non-reimbursable costs affect updated value and profit correctly', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, date, status, reimbursable, billable_to_client, affects_project_total
+            )
+            VALUES (?, ?, ?, ?, 'operational_expense', 'operational_expense', 'Hospedagem', 'Hospedagem', 548.65, 548.65, '2026-05-20', 'pending', 1, 1, 1)
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, date, status, reimbursable, billable_to_client, affects_project_total
+            )
+            VALUES (?, ?, ?, ?, 'operational_expense', 'operational_expense', 'Ferramenta interna', 'Software', 200, 200, '2026-05-20', 'paid', 0, 0, 0)
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        const summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
+        assert.equal(summary.updated_value, 5048.65);
+        assert.equal(summary.reimbursable_expenses, 548.65);
+        assert.equal(summary.operational_expenses, 748.65);
+        assert.equal(summary.net_balance, 4300);
     } finally {
         await cleanup();
     }
@@ -1467,13 +1536,34 @@ test('personal transactions are private, filterable and summarized by month', as
                 description: 'Receita de consultoria',
                 category: 'Consultoria',
                 amount: 1500,
+                gross_amount: 4800,
+                own_amount: 1400,
+                transfer_amount: 3400,
                 date: '2026-05-10',
+                payment_due_date: '2026-06-10',
                 status: 'paid',
                 source: 'manual',
-                origin_label: 'Freelance'
+                origin_label: 'Freelance',
+                financial_type: 'revenue'
             }
         });
         assert.equal(income.statusCode, 201);
+
+        const expectedInAnotherMonth = await callController(PersonalTransactionController.create, {
+            userId: seeded.ownerId,
+            body: {
+                type: 'income',
+                description: 'NF com vencimento em junho',
+                category: 'Projeto',
+                amount: 600,
+                date: '2026-05-20',
+                payment_due_date: '2026-06-15',
+                status: 'expected',
+                source: 'project',
+                financial_type: 'revenue'
+            }
+        });
+        assert.equal(expectedInAnotherMonth.statusCode, 201);
 
         const expense = await callController(PersonalTransactionController.create, {
             userId: seeded.ownerId,
@@ -1507,7 +1597,7 @@ test('personal transactions are private, filterable and summarized by month', as
 
         const ownerIncomeList = await callController(PersonalTransactionController.index, {
             userId: seeded.ownerId,
-            query: { type: 'income', status: 'paid', month: '05', year: '2026' }
+            query: { type: 'income', status: 'paid', month: '06', year: '2026' }
         });
         assert.equal(ownerIncomeList.statusCode, 200);
         assert.equal(ownerIncomeList.body.length, 1);
@@ -1518,7 +1608,7 @@ test('personal transactions are private, filterable and summarized by month', as
 
         const manualIncomeList = await callController(PersonalTransactionController.index, {
             userId: seeded.ownerId,
-            query: { source: 'manual', month: '05', year: '2026' }
+            query: { source: 'manual', month: '06', year: '2026' }
         });
         assert.equal(manualIncomeList.statusCode, 200);
         assert.equal(manualIncomeList.body.length, 1);
@@ -1548,11 +1638,22 @@ test('personal transactions are private, filterable and summarized by month', as
         });
         assert.equal(summary.statusCode, 200);
         assert.equal(summary.body.bank_balance, 1000);
-        assert.equal(summary.body.total_income_month, 1500);
+        assert.equal(summary.body.total_income_month, 2100);
         assert.equal(summary.body.total_expense_month, 250);
-        assert.equal(summary.body.projected_balance, 2250);
+        assert.equal(summary.body.gross_revenue_period, 5400);
+        assert.equal(summary.body.expected_month, 0);
+        assert.equal(summary.body.transfers, 3400);
+        assert.equal(summary.body.own_amount, 2000);
+        assert.equal(summary.body.projected_balance, 2850);
         assert.equal(summary.body.total_debt, 2000);
         assert.equal(summary.body.current_card_bill, 350);
+
+        const juneSummary = await callController(PersonalTransactionController.summary, {
+            userId: seeded.ownerId,
+            query: { month: '06', year: '2026' }
+        });
+        assert.equal(juneSummary.statusCode, 200);
+        assert.equal(juneSummary.body.expected_month, 2100);
 
         const archived = await callController(PersonalTransactionController.destroy, {
             userId: seeded.ownerId,

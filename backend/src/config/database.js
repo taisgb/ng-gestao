@@ -223,15 +223,23 @@ const POSTGRES_SCHEMA = `
         user_id INTEGER NOT NULL REFERENCES users(id),
         created_by INTEGER NOT NULL REFERENCES users(id),
         type TEXT NOT NULL,
+        financial_type TEXT,
         description TEXT NOT NULL,
         category TEXT NOT NULL,
         amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+        gross_amount DOUBLE PRECISION,
+        own_amount DOUBLE PRECISION,
+        transfer_amount DOUBLE PRECISION,
         date DATE NOT NULL,
+        payment_due_date DATE,
+        paid_at DATE,
         status TEXT DEFAULT 'pending',
         payment_method TEXT,
         affects_project_total INTEGER DEFAULT 0,
+        affects_personal_finance INTEGER DEFAULT 0,
         affects_my_financial INTEGER DEFAULT 0,
         reimbursable INTEGER DEFAULT 0,
+        billable_to_client INTEGER DEFAULT 0,
         reimbursed_at DATE,
         notes TEXT,
         archived INTEGER DEFAULT 0,
@@ -257,11 +265,17 @@ const POSTGRES_SCHEMA = `
         description TEXT NOT NULL,
         category TEXT NOT NULL,
         amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+        gross_amount DOUBLE PRECISION,
+        own_amount DOUBLE PRECISION,
+        transfer_amount DOUBLE PRECISION,
         date DATE NOT NULL,
+        payment_due_date DATE,
+        paid_at DATE,
         status TEXT DEFAULT 'expected',
         payment_method TEXT,
         source TEXT DEFAULT 'manual',
         origin_label TEXT,
+        financial_type TEXT,
         project_id INTEGER REFERENCES projects(id),
         team_id INTEGER REFERENCES teams(id),
         transaction_id INTEGER REFERENCES transactions(id),
@@ -457,6 +471,12 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'personal_transactions', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
     await ensurePostgresColumn(db, 'personal_transactions', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
     await ensurePostgresColumn(db, 'personal_transactions', 'origin_label', 'TEXT');
+    await ensurePostgresColumn(db, 'personal_transactions', 'gross_amount', 'DOUBLE PRECISION');
+    await ensurePostgresColumn(db, 'personal_transactions', 'own_amount', 'DOUBLE PRECISION');
+    await ensurePostgresColumn(db, 'personal_transactions', 'transfer_amount', 'DOUBLE PRECISION');
+    await ensurePostgresColumn(db, 'personal_transactions', 'payment_due_date', 'DATE');
+    await ensurePostgresColumn(db, 'personal_transactions', 'paid_at', 'DATE');
+    await ensurePostgresColumn(db, 'personal_transactions', 'financial_type', 'TEXT');
     await ensurePostgresColumn(db, 'personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'personal_transactions', 'archived', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'documents', 'team_id', 'INTEGER REFERENCES teams(id)');
@@ -465,6 +485,14 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'documents', 'invoice_id', 'INTEGER REFERENCES invoices(id)');
     await ensurePostgresColumn(db, 'documents', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
     await ensurePostgresColumn(db, 'documents', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'financial_type', 'TEXT');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'gross_amount', 'DOUBLE PRECISION');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'own_amount', 'DOUBLE PRECISION');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'transfer_amount', 'DOUBLE PRECISION');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'payment_due_date', 'DATE');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'paid_at', 'DATE');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'billable_to_client', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_financial_entries', 'affects_personal_finance', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'document_permissions', 'permission', "TEXT DEFAULT 'view'");
     await ensurePostgresColumn(db, 'document_permissions', 'granted_by', 'INTEGER REFERENCES users(id)');
 
@@ -745,15 +773,23 @@ async function connectDb() {
             user_id INTEGER NOT NULL,
             created_by INTEGER NOT NULL,
             type TEXT NOT NULL,
+            financial_type TEXT,
             description TEXT NOT NULL,
             category TEXT NOT NULL,
             amount REAL NOT NULL DEFAULT 0,
+            gross_amount REAL,
+            own_amount REAL,
+            transfer_amount REAL,
             date DATE NOT NULL,
+            payment_due_date DATE,
+            paid_at DATE,
             status TEXT DEFAULT 'pending',
             payment_method TEXT,
             affects_project_total INTEGER DEFAULT 0,
+            affects_personal_finance INTEGER DEFAULT 0,
             affects_my_financial INTEGER DEFAULT 0,
             reimbursable INTEGER DEFAULT 0,
+            billable_to_client INTEGER DEFAULT 0,
             reimbursed_at DATE,
             notes TEXT,
             archived INTEGER DEFAULT 0,
@@ -786,11 +822,17 @@ async function connectDb() {
             description TEXT NOT NULL,
             category TEXT NOT NULL,
             amount REAL NOT NULL DEFAULT 0,
+            gross_amount REAL,
+            own_amount REAL,
+            transfer_amount REAL,
             date DATE NOT NULL,
+            payment_due_date DATE,
+            paid_at DATE,
             status TEXT DEFAULT 'expected',
             payment_method TEXT,
             source TEXT DEFAULT 'manual',
             origin_label TEXT,
+            financial_type TEXT,
             project_id INTEGER,
             team_id INTEGER,
             transaction_id INTEGER,
@@ -889,6 +931,12 @@ async function connectDb() {
     await ensureColumn('personal_transactions', 'transaction_id', 'INTEGER');
     await ensureColumn('personal_transactions', 'project_financial_entry_id', 'INTEGER');
     await ensureColumn('personal_transactions', 'origin_label', 'TEXT');
+    await ensureColumn('personal_transactions', 'gross_amount', 'REAL');
+    await ensureColumn('personal_transactions', 'own_amount', 'REAL');
+    await ensureColumn('personal_transactions', 'transfer_amount', 'REAL');
+    await ensureColumn('personal_transactions', 'payment_due_date', 'DATE');
+    await ensureColumn('personal_transactions', 'paid_at', 'DATE');
+    await ensureColumn('personal_transactions', 'financial_type', 'TEXT');
     await ensureColumn('personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'updated_at', 'DATETIME');
@@ -902,6 +950,14 @@ async function connectDb() {
     await ensureColumn('documents', 'size', 'INTEGER');
     await ensureColumn('documents', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('documents', 'updated_at', 'DATETIME');
+    await ensureColumn('project_financial_entries', 'financial_type', 'TEXT');
+    await ensureColumn('project_financial_entries', 'gross_amount', 'REAL');
+    await ensureColumn('project_financial_entries', 'own_amount', 'REAL');
+    await ensureColumn('project_financial_entries', 'transfer_amount', 'REAL');
+    await ensureColumn('project_financial_entries', 'payment_due_date', 'DATE');
+    await ensureColumn('project_financial_entries', 'paid_at', 'DATE');
+    await ensureColumn('project_financial_entries', 'billable_to_client', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_financial_entries', 'affects_personal_finance', 'INTEGER DEFAULT 0');
     await ensureColumn('users', 'role', "TEXT DEFAULT 'member'");
     await ensureColumn('users', 'is_super_admin', 'INTEGER DEFAULT 0');
 

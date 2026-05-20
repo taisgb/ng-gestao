@@ -7,11 +7,17 @@ const emptyTransaction = {
   type: 'income',
   category: 'Projeto',
   amount: '',
+  gross_amount: '',
+  own_amount: '',
+  transfer_amount: '',
   date: new Date().toISOString().split('T')[0],
+  payment_due_date: '',
+  paid_at: '',
   status: 'expected',
   payment_method: '',
   source: 'manual',
   origin_label: '',
+  financial_type: '',
   notes: '',
   is_recurring: false
 };
@@ -36,7 +42,6 @@ function parseCurrency(value) {
 }
 
 export default function PersonalFinance() {
-  const today = new Date();
   const [summary, setSummary] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -44,8 +49,8 @@ export default function PersonalFinance() {
   const [feedback, setFeedback] = useState('');
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({
-    month: String(today.getMonth() + 1).padStart(2, '0'),
-    year: String(today.getFullYear()),
+    month: '',
+    year: '',
     type: '',
     status: '',
     category: '',
@@ -69,8 +74,13 @@ export default function PersonalFinance() {
       const query = new URLSearchParams(
         Object.fromEntries(Object.entries(filters).filter(([, value]) => value))
       ).toString();
+      const summaryQuery = new URLSearchParams();
+      if (filters.month && filters.year) {
+        summaryQuery.set('month', filters.month);
+        summaryQuery.set('year', filters.year);
+      }
       const [summaryRes, dashboardRes, transactionsRes, renegotiationsRes] = await Promise.all([
-        api.get(`/personal/summary?month=${filters.month}&year=${filters.year}`),
+        api.get(`/personal/summary?${summaryQuery.toString()}`),
         api.get('/personal/dashboard'),
         api.get(`/personal/transactions?${query}`),
         api.get('/personal/renegotiations')
@@ -115,11 +125,17 @@ export default function PersonalFinance() {
       type: item.type || 'income',
       category: item.category || 'Outros',
       amount: String(item.amount || ''),
+      gross_amount: String(item.gross_amount || ''),
+      own_amount: String(item.own_amount || ''),
+      transfer_amount: String(item.transfer_amount || ''),
       date: item.date || new Date().toISOString().split('T')[0],
+      payment_due_date: item.payment_due_date || '',
+      paid_at: item.paid_at || '',
       status: item.status || 'expected',
       payment_method: item.payment_method || '',
       source: item.source || 'manual',
       origin_label: item.origin_label || '',
+      financial_type: item.financial_type || '',
       notes: item.notes || '',
       is_recurring: Boolean(item.is_recurring)
     });
@@ -132,6 +148,12 @@ export default function PersonalFinance() {
     const payload = {
       ...transactionForm,
       amount: parseCurrency(transactionForm.amount),
+      gross_amount: transactionForm.gross_amount ? parseCurrency(transactionForm.gross_amount) : null,
+      own_amount: transactionForm.own_amount ? parseCurrency(transactionForm.own_amount) : null,
+      transfer_amount: transactionForm.transfer_amount ? parseCurrency(transactionForm.transfer_amount) : null,
+      payment_due_date: transactionForm.payment_due_date || null,
+      paid_at: transactionForm.paid_at || null,
+      financial_type: transactionForm.financial_type || null,
       origin_label: transactionForm.source === 'manual' ? transactionForm.origin_label.trim() : '',
       is_recurring: transactionForm.is_recurring ? 1 : 0
     };
@@ -264,8 +286,12 @@ export default function PersonalFinance() {
 
       <section className="personal-summary">
         <div className="summary-card"><span>Saldo em bancos</span><strong>{formatCurrency(summary?.bank_balance)}</strong></div>
-        <div className="summary-card income"><span>Receitas do mes</span><strong>{formatCurrency(summary?.total_income_month)}</strong></div>
-        <div className="summary-card debt"><span>Despesas do mes</span><strong>{formatCurrency(summary?.total_expense_month)}</strong></div>
+        <div className="summary-card income"><span>Faturamento total</span><strong>{formatCurrency(summary?.gross_revenue_total)}</strong></div>
+        <div className="summary-card income"><span>Previsto no mes</span><strong>{formatCurrency(summary?.expected_month)}</strong></div>
+        <div className="summary-card income"><span>Recebido</span><strong>{formatCurrency(summary?.received)}</strong></div>
+        <div className="summary-card debt"><span>Despesas</span><strong>{formatCurrency(summary?.total_expense_month)}</strong></div>
+        <div className="summary-card debt"><span>Repasses</span><strong>{formatCurrency(summary?.transfers)}</strong></div>
+        <div className="summary-card fixed"><span>Minha parte</span><strong>{formatCurrency(summary?.own_amount)}</strong></div>
         <div className="summary-card fixed"><span>Saldo previsto</span><strong>{formatCurrency(summary?.projected_balance)}</strong></div>
         <div className="summary-card debt"><span>Divida total</span><strong>{formatCurrency(summary?.total_debt ?? dashboard?.total_debt)}</strong></div>
         <div className="summary-card card-bill"><span>Fatura atual</span><strong>{formatCurrency(summary?.current_card_bill ?? dashboard?.current_card_bill)}</strong></div>
@@ -274,6 +300,7 @@ export default function PersonalFinance() {
 
       <section className="filters-panel">
         <select value={filters.month} onChange={e => setFilters({ ...filters, month: e.target.value })}>
+          <option value="">Todos os meses</option>
           {Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0')).map(month => (
             <option key={month} value={month}>{month}</option>
           ))}
@@ -308,9 +335,22 @@ export default function PersonalFinance() {
               {categories.map(category => <option key={category} value={category}>{category}</option>)}
             </select>
             <input value={transactionForm.amount} onChange={e => setTransactionForm({ ...transactionForm, amount: e.target.value })} placeholder="Valor" required />
+            <input value={transactionForm.gross_amount} onChange={e => setTransactionForm({ ...transactionForm, gross_amount: e.target.value })} placeholder="Valor bruto" />
+            <input value={transactionForm.own_amount} onChange={e => setTransactionForm({ ...transactionForm, own_amount: e.target.value })} placeholder="Minha parte" />
+            <input value={transactionForm.transfer_amount} onChange={e => setTransactionForm({ ...transactionForm, transfer_amount: e.target.value })} placeholder="Repasses" />
             <input type="date" value={transactionForm.date} onChange={e => setTransactionForm({ ...transactionForm, date: e.target.value })} required />
+            <input type="date" value={transactionForm.payment_due_date} onChange={e => setTransactionForm({ ...transactionForm, payment_due_date: e.target.value })} title="Data prevista de pagamento" />
+            <input type="date" value={transactionForm.paid_at} onChange={e => setTransactionForm({ ...transactionForm, paid_at: e.target.value })} title="Data real de pagamento" />
             <select value={transactionForm.status} onChange={e => setTransactionForm({ ...transactionForm, status: e.target.value })}>
               {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            <select value={transactionForm.financial_type} onChange={e => setTransactionForm({ ...transactionForm, financial_type: e.target.value })}>
+              <option value="">Tipo financeiro</option>
+              <option value="revenue">Receita / NF</option>
+              <option value="payment_received">Pagamento recebido</option>
+              <option value="transfer">Repasse</option>
+              <option value="operational_expense">Despesa operacional</option>
+              <option value="reimbursement">Reembolso</option>
             </select>
             <input value={transactionForm.payment_method} onChange={e => setTransactionForm({ ...transactionForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
             <select

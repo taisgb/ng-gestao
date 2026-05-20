@@ -4,21 +4,23 @@ import api from '../../services/api';
 import './styles.scss';
 
 const ENTRY_TYPES = [
-  { value: 'income', label: 'Receita' },
+  { value: 'revenue', label: 'Receita/NF' },
+  { value: 'payment_received', label: 'Pagamento recebido' },
   { value: 'scope_increase', label: 'Aumento de escopo' },
-  { value: 'expense', label: 'Despesa' },
-  { value: 'operational_cost', label: 'Custo operacional' },
+  { value: 'operational_expense', label: 'Custo operacional' },
   { value: 'transfer', label: 'Repasse' },
   { value: 'reimbursement', label: 'Reembolso' },
-  { value: 'received_payment', label: 'Pagamento recebido' },
-  { value: 'scope_adjustment', label: 'Ajuste de escopo' }
+  { value: 'adjustment_positive', label: 'Ajuste positivo' },
+  { value: 'adjustment_negative', label: 'Ajuste negativo' }
 ];
 
 const ENTRY_STATUSES = [
   { value: 'pending', label: 'Pendente' },
-  { value: 'paid', label: 'Pago/recebido' },
+  { value: 'expected', label: 'Previsto' },
+  { value: 'paid', label: 'Pago' },
   { value: 'reimbursed', label: 'Reembolsado' },
-  { value: 'canceled', label: 'Cancelado' }
+  { value: 'canceled', label: 'Cancelado' },
+  { value: 'archived', label: 'Arquivado' }
 ];
 
 const DOCUMENT_TYPES = [
@@ -39,9 +41,35 @@ const ENTRY_TAB_CONFIG = [
   ['archived', 'Arquivados']
 ];
 
-const incomeTypes = ['income', 'scope_increase', 'scope_adjustment', 'received_payment'];
-const expenseTypes = ['expense', 'operational_cost', 'transfer'];
+const incomeTypes = ['revenue', 'income', 'scope_increase', 'scope_adjustment', 'payment_received', 'received_payment', 'adjustment_positive'];
+const expenseTypes = ['operational_expense', 'expense', 'operational_cost', 'transfer', 'adjustment_negative'];
 const reimbursementTypes = ['reimbursement'];
+
+function emptyEntryForm() {
+  return {
+    type: 'revenue',
+    description: '',
+    category: '',
+    amount: '',
+    gross_amount: '',
+    own_amount: '',
+    transfer_amount: '',
+    date: new Date().toISOString().split('T')[0],
+    payment_due_date: '',
+    paid_at: '',
+    status: 'pending',
+    payment_method: '',
+    affects_project_total: true,
+    affects_my_financial: false,
+    affects_personal_finance: false,
+    reimbursable: false,
+    billable_to_client: false,
+    notes: '',
+    document_file_name: '',
+    document_file_url: '',
+    document_type: 'receipt'
+  };
+}
 
 export default function ProjectDetails() {
   const { id } = useParams();
@@ -53,22 +81,8 @@ export default function ProjectDetails() {
   const [projectEntries, setProjectEntries] = useState([]);
   const [entryTab, setEntryTab] = useState('all');
   const [canEditProjectEntries, setCanEditProjectEntries] = useState(false);
-  const [entryForm, setEntryForm] = useState({
-    type: 'income',
-    description: '',
-    category: '',
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
-    status: 'pending',
-    payment_method: '',
-    affects_project_total: false,
-    affects_my_financial: false,
-    reimbursable: false,
-    notes: '',
-    document_file_name: '',
-    document_file_url: '',
-    document_type: 'receipt'
-  });
+  const [entryForm, setEntryForm] = useState(emptyEntryForm());
+  const [editingEntry, setEditingEntry] = useState(null);
   const [totalValueDraft, setTotalValueDraft] = useState('');
   const [shareDrafts, setShareDrafts] = useState({});
   const [statuses, setStatuses] = useState([]);
@@ -114,7 +128,7 @@ export default function ProjectDetails() {
         safeGet(`/projects/${id}/notes`, []),
         safeGet(`/projects/${id}/financial-entries`, { entries: [], can_edit_global: false }),
         safeGet(`/projects/${id}/finance-summary`, null),
-        safeGet(`/projects/${id}/documents?status=all`, [])
+        safeGet(`/projects/${id}/documents?status=active`, [])
       ]);
 
       setTasks(tasksRes.data);
@@ -254,15 +268,62 @@ export default function ProjectDetails() {
     }
   }
 
-  async function handleCreateEntry(e) {
+  function resetEntryForm() {
+    setEntryForm(emptyEntryForm());
+    setEditingEntry(null);
+  }
+
+  function entryPayload() {
+    return {
+      ...entryForm,
+      financial_type: entryForm.type,
+      amount: Number(entryForm.gross_amount || entryForm.amount || 0),
+      gross_amount: Number(entryForm.gross_amount || entryForm.amount || 0),
+      own_amount: entryForm.own_amount === '' ? null : Number(entryForm.own_amount),
+      transfer_amount: entryForm.transfer_amount === '' ? null : Number(entryForm.transfer_amount),
+      payment_due_date: entryForm.payment_due_date || null,
+      paid_at: entryForm.paid_at || null
+    };
+  }
+
+  function handleEditEntry(entry) {
+    setEditingEntry(entry);
+    setEntryForm({
+      ...emptyEntryForm(),
+      type: entry.financial_type || entry.type || 'revenue',
+      description: entry.description || '',
+      category: entry.category || '',
+      amount: String(entry.amount || ''),
+      gross_amount: String(entry.gross_amount ?? entry.amount ?? ''),
+      own_amount: entry.own_amount === null || entry.own_amount === undefined ? '' : String(entry.own_amount),
+      transfer_amount: entry.transfer_amount === null || entry.transfer_amount === undefined ? '' : String(entry.transfer_amount),
+      date: entry.date || new Date().toISOString().split('T')[0],
+      payment_due_date: entry.payment_due_date || '',
+      paid_at: entry.paid_at || '',
+      status: entry.status || 'pending',
+      payment_method: entry.payment_method || '',
+      affects_project_total: Boolean(entry.affects_project_total),
+      affects_my_financial: Boolean(entry.affects_my_financial),
+      affects_personal_finance: Boolean(entry.affects_personal_finance),
+      reimbursable: Boolean(entry.reimbursable),
+      billable_to_client: Boolean(entry.billable_to_client),
+      notes: entry.notes || '',
+      document_file_name: '',
+      document_file_url: '',
+      document_type: 'receipt'
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleSaveEntry(e) {
     e.preventDefault();
     setFeedback('');
 
     try {
-      const entryResponse = await api.post(`/projects/${id}/financial-entries`, {
-        ...entryForm,
-        amount: Number(entryForm.amount || 0)
-      });
+      const payload = entryPayload();
+      const entryResponse = editingEntry
+        ? await api.put(`/projects/${id}/financial-entries/${editingEntry.id}`, payload)
+        : await api.post(`/projects/${id}/financial-entries`, payload);
       if (entryForm.document_file_name && entryForm.document_file_url) {
         await api.post('/documents', {
           file_name: entryForm.document_file_name,
@@ -270,30 +331,15 @@ export default function ProjectDetails() {
           provider: 'drive',
           document_type: entryForm.document_type || 'receipt',
           project_id: id,
-          project_financial_entry_id: entryResponse.data.id,
+          project_financial_entry_id: editingEntry?.id || entryResponse.data.id,
           description: `Documento do lancamento: ${entryForm.description}`
         });
       }
-      setEntryForm({
-        type: 'income',
-        description: '',
-        category: '',
-        amount: '',
-        date: new Date().toISOString().split('T')[0],
-        status: 'pending',
-        payment_method: '',
-        affects_project_total: false,
-        affects_my_financial: false,
-        reimbursable: false,
-        notes: '',
-        document_file_name: '',
-        document_file_url: '',
-        document_type: 'receipt'
-      });
+      resetEntryForm();
       await loadProjectData();
-      setFeedback('Lancamento do projeto criado.');
+      setFeedback(editingEntry ? 'Lancamento atualizado.' : 'Lancamento do projeto criado.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao criar lancamento do projeto.');
+      setFeedback(err.response?.data?.error || 'Erro ao salvar lancamento do projeto.');
     }
   }
 
@@ -314,6 +360,16 @@ export default function ProjectDetails() {
       setFeedback('Lancamento arquivado.');
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao arquivar lancamento.');
+    }
+  }
+
+  async function handleRestoreEntry(entry) {
+    try {
+      await api.patch(`/projects/${id}/financial-entries/${entry.id}/restore`);
+      await loadProjectData();
+      setFeedback('Lancamento restaurado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar lancamento.');
     }
   }
 
@@ -416,12 +472,17 @@ export default function ProjectDetails() {
   const financeKpis = [
     ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
     ['Receitas adicionais', projectFinanceSummary?.additional_income],
+    ['Custos reembolsaveis cobrados', projectFinanceSummary?.billable_reimbursable_costs],
     ['Valor atualizado', projectFinanceSummary?.updated_value ?? projectFinanceSummary?.updated_total_value],
-    ['Recebido', projectFinanceSummary?.received ?? projectFinanceSummary?.total_received],
-    ['Pendente', projectFinanceSummary?.pending ?? projectFinanceSummary?.total_pending],
-    ['Despesas', projectFinanceSummary?.expenses ?? projectFinanceSummary?.total_expenses],
+    ['Recebido do cliente', projectFinanceSummary?.received_client ?? projectFinanceSummary?.received ?? projectFinanceSummary?.total_received],
+    ['Pendente do cliente', projectFinanceSummary?.pending_client ?? projectFinanceSummary?.pending ?? projectFinanceSummary?.total_pending],
+    ['Despesas operacionais', projectFinanceSummary?.operational_expenses ?? projectFinanceSummary?.expenses ?? projectFinanceSummary?.total_expenses],
+    ['Repasses', projectFinanceSummary?.transfers_total],
+    ['Pendente de repasse', projectFinanceSummary?.pending_transfer],
     ['A reembolsar', projectFinanceSummary?.reimbursable_expenses],
-    ['Saldo liquido', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance]
+    ['Saldo liquido previsto', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance],
+    ['Caixa atual', projectFinanceSummary?.cash_current ?? projectFinanceSummary?.current_cash],
+    ['Minha parte', projectFinanceSummary?.own_amount ?? projectFinanceSummary?.my_share]
   ];
   const entryTabCounts = {
     all: projectEntries.length,
@@ -540,21 +601,28 @@ export default function ProjectDetails() {
         )}
 
         {canEditProjectEntries && (
-          <form onSubmit={handleCreateEntry} className="entry-form">
+          <form onSubmit={handleSaveEntry} className={`entry-form ${editingEntry ? 'editing' : ''}`}>
+            {editingEntry && <div className="editing-banner">Editando lancamento #{editingEntry.id}</div>}
             <select value={entryForm.type} onChange={e => setEntryForm({ ...entryForm, type: e.target.value })}>
               {ENTRY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
             <input value={entryForm.description} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} placeholder="Descricao" required />
             <input value={entryForm.category} onChange={e => setEntryForm({ ...entryForm, category: e.target.value })} placeholder="Categoria" required />
-            <input type="number" step="0.01" value={entryForm.amount} onChange={e => setEntryForm({ ...entryForm, amount: e.target.value })} placeholder="Valor" required />
+            <input type="number" step="0.01" value={entryForm.gross_amount || entryForm.amount} onChange={e => setEntryForm({ ...entryForm, gross_amount: e.target.value, amount: e.target.value })} placeholder="Valor bruto" required />
+            <input type="number" step="0.01" value={entryForm.own_amount} onChange={e => setEntryForm({ ...entryForm, own_amount: e.target.value })} placeholder="Minha parte" />
+            <input type="number" step="0.01" value={entryForm.transfer_amount} onChange={e => setEntryForm({ ...entryForm, transfer_amount: e.target.value })} placeholder="Repasse" />
             <input type="date" value={entryForm.date} onChange={e => setEntryForm({ ...entryForm, date: e.target.value })} required />
+            <input type="date" value={entryForm.payment_due_date} onChange={e => setEntryForm({ ...entryForm, payment_due_date: e.target.value })} title="Data prevista de pagamento" />
+            <input type="date" value={entryForm.paid_at} onChange={e => setEntryForm({ ...entryForm, paid_at: e.target.value })} title="Data real de pagamento" />
             <select value={entryForm.status} onChange={e => setEntryForm({ ...entryForm, status: e.target.value })}>
               {ENTRY_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
             </select>
             <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
             <label><input type="checkbox" checked={entryForm.affects_project_total} onChange={e => setEntryForm({ ...entryForm, affects_project_total: e.target.checked })} /> Soma no projeto</label>
-            <label><input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked })} /> Reembolsavel</label>
+            <label><input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked, billable_to_client: e.target.checked ? true : entryForm.billable_to_client, affects_project_total: e.target.checked ? true : entryForm.affects_project_total })} /> Reembolsavel</label>
+            <label><input type="checkbox" checked={entryForm.billable_to_client} onChange={e => setEntryForm({ ...entryForm, billable_to_client: e.target.checked })} /> Cobrar do cliente</label>
             <label><input type="checkbox" checked={entryForm.affects_my_financial} onChange={e => setEntryForm({ ...entryForm, affects_my_financial: e.target.checked })} /> Meu financeiro</label>
+            <p className="entry-help">Custos reembolsaveis podem ser cobrados do cliente e somam ao valor atualizado quando "Soma no projeto" estiver marcado.</p>
             <textarea value={entryForm.notes} onChange={e => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="Observacoes" />
             <input value={entryForm.document_file_name} onChange={e => setEntryForm({ ...entryForm, document_file_name: e.target.value })} placeholder="Nome do comprovante" />
             <input value={entryForm.document_file_url} onChange={e => setEntryForm({ ...entryForm, document_file_url: e.target.value })} placeholder="Link do comprovante" />
@@ -564,7 +632,8 @@ export default function ProjectDetails() {
               <option value="boleto">Boleto</option>
               <option value="other">Outro</option>
             </select>
-            <button type="submit">Adicionar lancamento</button>
+            <button type="submit">{editingEntry ? 'Salvar alteracoes' : 'Adicionar lancamento'}</button>
+            {editingEntry && <button type="button" className="btn-cancel" onClick={resetEntryForm}>Cancelar edicao</button>}
           </form>
         )}
 
@@ -599,14 +668,42 @@ export default function ProjectDetails() {
               <strong>{entry.description}</strong>
               <span className={`status-pill ${entry.status}`}>{entry.status}</span>
               <span>{entry.created_by_name || 'Voce'}</span>
-              <strong>{formatCurrency(entry.amount)}</strong>
+              <strong>{formatCurrency(entry.gross_amount ?? entry.amount)}</strong>
               <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
               {canEditProjectEntries ? (
-                <div>
-                  <button onClick={() => handleEntryStatus(entry, 'paid')}>Pago</button>
-                  <button onClick={() => handleEntryStatus(entry, 'reimbursed')}>Reembolsar</button>
-                  <button onClick={() => handleEntryStatus(entry, 'canceled')}>Cancelar</button>
-                  <button onClick={() => handleArchiveEntry(entry)}>Arquivar</button>
+                <div className="entry-actions">
+                  <select
+                    value={entry.archived === 1 ? 'archived' : entry.status}
+                    disabled={entry.archived === 1}
+                    onChange={e => handleEntryStatus(entry, e.target.value)}
+                  >
+                    {ENTRY_STATUSES.filter(status => status.value !== 'archived').map(status => (
+                      <option key={status.value} value={status.value}>{status.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value=""
+                    onChange={e => {
+                      const action = e.target.value;
+                      e.target.value = '';
+                      if (action === 'edit') handleEditEntry(entry);
+                      if (action === 'pending') handleEntryStatus(entry, 'pending');
+                      if (action === 'paid') handleEntryStatus(entry, 'paid');
+                      if (action === 'reimbursed') handleEntryStatus(entry, 'reimbursed');
+                      if (action === 'canceled') handleEntryStatus(entry, 'canceled');
+                      if (action === 'archive') handleArchiveEntry(entry);
+                      if (action === 'restore') handleRestoreEntry(entry);
+                    }}
+                  >
+                    <option value="">...</option>
+                    {entry.archived !== 1 && <option value="edit">Editar</option>}
+                    {entry.archived !== 1 && <option value="pending">Pendente</option>}
+                    {entry.archived !== 1 && <option value="paid">Pago</option>}
+                    {entry.archived !== 1 && <option value="reimbursed">Reembolsado</option>}
+                    {entry.archived !== 1 && <option value="canceled">Cancelado</option>}
+                    {entry.archived !== 1 && <option value="archive">Arquivar</option>}
+                    {entry.archived === 1 && <option value="restore">Restaurar</option>}
+                  </select>
                 </div>
               ) : <span>-</span>}
             </article>

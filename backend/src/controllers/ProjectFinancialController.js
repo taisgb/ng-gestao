@@ -10,8 +10,22 @@ const PersonalTransactionController = require('./PersonalTransactionController')
 const { calculateProjectFinancialSummary } = require('../services/projectFinancialSummary');
 const { logActivity } = require('../utils/activityLog');
 
-const TYPES = ['income', 'expense', 'reimbursement', 'received_payment', 'scope_adjustment', 'scope_increase', 'operational_cost', 'transfer'];
-const STATUSES = ['pending', 'paid', 'reimbursed', 'canceled'];
+const TYPES = [
+    'revenue',
+    'payment_received',
+    'scope_increase',
+    'operational_expense',
+    'transfer',
+    'reimbursement',
+    'adjustment_positive',
+    'adjustment_negative',
+    'income',
+    'expense',
+    'received_payment',
+    'scope_adjustment',
+    'operational_cost'
+];
+const STATUSES = ['pending', 'expected', 'paid', 'reimbursed', 'canceled', 'archived'];
 
 async function getEntry(db, projectId, entryId) {
     return db.get(
@@ -25,8 +39,9 @@ function normalizeBoolean(value) {
 }
 
 function transactionTypeFor(entry) {
-    if (['expense', 'operational_cost', 'transfer'].includes(entry.type)) return 'Despesa';
-    if (['income', 'reimbursement', 'received_payment', 'scope_adjustment', 'scope_increase'].includes(entry.type)) return 'Receita';
+    const type = entry.financial_type || entry.type;
+    if (['operational_expense', 'expense', 'operational_cost', 'transfer'].includes(type)) return 'Despesa';
+    if (['revenue', 'income', 'reimbursement', 'payment_received', 'received_payment', 'scope_adjustment', 'scope_increase', 'adjustment_positive'].includes(type)) return 'Receita';
     return null;
 }
 
@@ -49,6 +64,12 @@ async function syncPersonalTransaction(db, entry) {
 
     if (existing) return;
 
+    const grossAmount = toMoney(entry.gross_amount ?? entry.amount);
+    const ownAmount = entry.own_amount !== undefined && entry.own_amount !== null
+        ? toMoney(entry.own_amount)
+        : Math.max(0, grossAmount - Number(entry.transfer_amount || 0));
+    const legacyAmount = txType === 'Receita' ? ownAmount : grossAmount;
+
     await db.run(`
         INSERT INTO transactions (
             user_id, type, entity, category, amount, date, description, project_id, project_financial_entry_id
@@ -58,8 +79,8 @@ async function syncPersonalTransaction(db, entry) {
         entry.user_id,
         txType,
         entry.category || 'Projeto',
-        toMoney(entry.amount),
-        entry.date,
+        legacyAmount,
+        entry.paid_at || entry.payment_due_date || entry.date,
         entry.description,
         entry.project_id,
         entry.id
@@ -108,15 +129,23 @@ module.exports = {
             const { id } = req.params;
             const {
                 type,
+                financial_type,
                 description,
                 category,
                 amount,
+                gross_amount,
+                own_amount,
+                transfer_amount,
                 date,
+                payment_due_date,
+                paid_at,
                 status,
                 payment_method,
                 affects_project_total,
+                affects_personal_finance,
                 affects_my_financial,
                 reimbursable,
+                billable_to_client,
                 notes,
                 user_id
             } = req.body;
@@ -128,13 +157,18 @@ module.exports = {
                 return res.status(403).json({ error: 'Sem permissao para criar lancamentos financeiros neste projeto.' });
             }
 
-            if (!TYPES.includes(type) || !isNonEmptyString(description, 180) || !isNonEmptyString(category, 100) || !isDate(date)) {
+            const normalizedType = financial_type || type;
+            if (!TYPES.includes(normalizedType) || !isNonEmptyString(description, 180) || !isNonEmptyString(category, 100) || !isDate(date)) {
                 return res.status(400).json({ error: 'Tipo, descricao, categoria e data validos sao obrigatorios.' });
             }
 
-            if (!isNonNegativeMoney(amount) || toMoney(amount) === 0) {
+            const entryAmount = gross_amount ?? amount;
+            if (!isNonNegativeMoney(entryAmount) || toMoney(entryAmount) === 0) {
                 return res.status(400).json({ error: 'Valor positivo e obrigatorio.' });
             }
+
+            if (payment_due_date && !isDate(payment_due_date)) return res.status(400).json({ error: 'Data prevista invalida.' });
+            if (paid_at && !isDate(paid_at)) return res.status(400).json({ error: 'Data de pagamento invalida.' });
 
             if (status && !STATUSES.includes(status)) {
                 return res.status(400).json({ error: 'Status invalido.' });
@@ -143,25 +177,35 @@ module.exports = {
             const ownerUserId = user_id || req.userId;
             const result = await db.run(`
                 INSERT INTO project_financial_entries (
-                    project_id, team_id, user_id, created_by, type, description, category, amount, date, status,
-                    payment_method, affects_project_total, affects_my_financial, reimbursable, notes
+                    project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                    amount, gross_amount, own_amount, transfer_amount, date, payment_due_date, paid_at, status,
+                    payment_method, affects_project_total, affects_personal_finance, affects_my_financial,
+                    reimbursable, billable_to_client, notes
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 id,
                 project.team_id || project.client_team_id || null,
                 ownerUserId,
                 req.userId,
-                type,
+                normalizedType,
+                normalizedType,
                 description.trim(),
                 category.trim(),
-                toMoney(amount),
+                toMoney(entryAmount),
+                toMoney(entryAmount),
+                own_amount === undefined || own_amount === null || own_amount === '' ? null : toMoney(own_amount),
+                transfer_amount === undefined || transfer_amount === null || transfer_amount === '' ? null : toMoney(transfer_amount),
                 date,
+                payment_due_date || null,
+                paid_at || null,
                 status || 'pending',
                 payment_method || null,
-                normalizeBoolean(affects_project_total),
+                affects_project_total === undefined ? 1 : normalizeBoolean(affects_project_total),
+                normalizeBoolean(affects_personal_finance),
                 normalizeBoolean(affects_my_financial),
                 normalizeBoolean(reimbursable),
+                normalizeBoolean(billable_to_client),
                 notes || null
             ]);
 
@@ -190,53 +234,81 @@ module.exports = {
 
             const {
                 type,
+                financial_type,
                 description,
                 category,
                 amount,
+                gross_amount,
+                own_amount,
+                transfer_amount,
                 date,
+                payment_due_date,
+                paid_at,
                 status,
                 payment_method,
                 affects_project_total,
+                affects_personal_finance,
                 affects_my_financial,
                 reimbursable,
+                billable_to_client,
                 reimbursed_at,
                 notes
             } = req.body;
 
-            if (type !== undefined && !TYPES.includes(type)) return res.status(400).json({ error: 'Tipo invalido.' });
+            const normalizedType = financial_type || type;
+            if (normalizedType !== undefined && !TYPES.includes(normalizedType)) return res.status(400).json({ error: 'Tipo invalido.' });
             if (status !== undefined && !STATUSES.includes(status)) return res.status(400).json({ error: 'Status invalido.' });
             if (description !== undefined && !isNonEmptyString(description, 180)) return res.status(400).json({ error: 'Descricao invalida.' });
             if (category !== undefined && !isNonEmptyString(category, 100)) return res.status(400).json({ error: 'Categoria invalida.' });
             if (date !== undefined && !isDate(date)) return res.status(400).json({ error: 'Data invalida.' });
-            if (amount !== undefined && (!isNonNegativeMoney(amount) || toMoney(amount) === 0)) return res.status(400).json({ error: 'Valor invalido.' });
+            const entryAmount = gross_amount ?? amount;
+            if (entryAmount !== undefined && (!isNonNegativeMoney(entryAmount) || toMoney(entryAmount) === 0)) return res.status(400).json({ error: 'Valor invalido.' });
+            if (payment_due_date !== undefined && payment_due_date && !isDate(payment_due_date)) return res.status(400).json({ error: 'Data prevista invalida.' });
+            if (paid_at !== undefined && paid_at && !isDate(paid_at)) return res.status(400).json({ error: 'Data de pagamento invalida.' });
 
             await db.run(`
                 UPDATE project_financial_entries
                 SET type = COALESCE(?, type),
+                    financial_type = COALESCE(?, financial_type),
                     description = COALESCE(?, description),
                     category = COALESCE(?, category),
                     amount = COALESCE(?, amount),
+                    gross_amount = COALESCE(?, gross_amount),
+                    own_amount = ?,
+                    transfer_amount = ?,
                     date = COALESCE(?, date),
+                    payment_due_date = ?,
+                    paid_at = ?,
                     status = COALESCE(?, status),
                     payment_method = COALESCE(?, payment_method),
                     affects_project_total = COALESCE(?, affects_project_total),
+                    affects_personal_finance = COALESCE(?, affects_personal_finance),
                     affects_my_financial = COALESCE(?, affects_my_financial),
                     reimbursable = COALESCE(?, reimbursable),
+                    billable_to_client = COALESCE(?, billable_to_client),
                     reimbursed_at = COALESCE(?, reimbursed_at),
                     notes = COALESCE(?, notes),
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND project_id = ?
             `, [
-                type,
+                normalizedType,
+                normalizedType,
                 description === undefined ? null : description.trim(),
                 category === undefined ? null : category.trim(),
-                amount === undefined ? null : toMoney(amount),
+                entryAmount === undefined ? null : toMoney(entryAmount),
+                entryAmount === undefined ? null : toMoney(entryAmount),
+                own_amount === undefined ? entry.own_amount : own_amount === null || own_amount === '' ? null : toMoney(own_amount),
+                transfer_amount === undefined ? entry.transfer_amount : transfer_amount === null || transfer_amount === '' ? null : toMoney(transfer_amount),
                 date,
+                payment_due_date === undefined ? entry.payment_due_date : payment_due_date || null,
+                paid_at === undefined ? entry.paid_at : paid_at || null,
                 status,
                 payment_method,
                 affects_project_total === undefined ? null : normalizeBoolean(affects_project_total),
+                affects_personal_finance === undefined ? null : normalizeBoolean(affects_personal_finance),
                 affects_my_financial === undefined ? null : normalizeBoolean(affects_my_financial),
                 reimbursable === undefined ? null : normalizeBoolean(reimbursable),
+                billable_to_client === undefined ? null : normalizeBoolean(billable_to_client),
                 reimbursed_at,
                 notes,
                 entryId,
@@ -271,10 +343,12 @@ module.exports = {
             await db.run(`
                 UPDATE project_financial_entries
                 SET status = ?,
+                    archived = CASE WHEN ? = 'archived' THEN 1 ELSE archived END,
+                    paid_at = CASE WHEN ? = 'paid' THEN COALESCE(paid_at, DATE('now')) ELSE paid_at END,
                     reimbursed_at = CASE WHEN ? = 'reimbursed' THEN COALESCE(reimbursed_at, DATE('now')) ELSE reimbursed_at END,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND project_id = ?
-            `, [status, status, entryId, id]);
+            `, [status, status, status, status, entryId, id]);
 
             const updated = await getEntry(db, id, entryId);
             await syncPersonalTransaction(db, updated);
@@ -308,6 +382,30 @@ module.exports = {
         } catch (error) {
             console.error('[ProjectFinancialController.destroy]', error);
             return res.status(500).json({ error: 'Erro ao arquivar lancamento.' });
+        }
+    },
+
+    async restore(req, res) {
+        try {
+            const { id, entryId } = req.params;
+            const db = await connectDb();
+
+            if (!await canEditProjectFinancials(db, req.userId, id)) {
+                return res.status(403).json({ error: 'Sem permissao para restaurar lancamentos financeiros.' });
+            }
+
+            const result = await db.run(`
+                UPDATE project_financial_entries
+                SET archived = 0, status = 'pending', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND project_id = ?
+            `, [entryId, id]);
+
+            if (result.changes === 0) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            await logActivity(db, req.userId, 'restore_financial_entry', 'project', id, { entry_id: entryId });
+            return res.json({ message: 'Lancamento restaurado.' });
+        } catch (error) {
+            console.error('[ProjectFinancialController.restore]', error);
+            return res.status(500).json({ error: 'Erro ao restaurar lancamento.' });
         }
     },
 
