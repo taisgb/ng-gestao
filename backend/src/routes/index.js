@@ -50,6 +50,8 @@ routes.get('/teams', TeamController.index);
 routes.post('/teams', TeamController.create);
 routes.get('/teams/:id', TeamController.show);
 routes.put('/teams/:id', TeamController.update);
+routes.patch('/teams/:id/archive', TeamController.archive);
+routes.patch('/teams/:id/restore', TeamController.restore);
 routes.delete('/teams/:id', TeamController.destroy);
 routes.get('/teams/:id/members', TeamController.members);
 routes.post('/teams/:id/members', TeamController.addMember);
@@ -79,6 +81,7 @@ routes.delete('/projects/:id', ProjectController.destroy);
 routes.post('/projects/:id/share', ProjectController.share);
 routes.patch('/projects/:id/owner', ProjectController.transferOwner);
 routes.get('/projects/:id/members', ProjectController.members);
+routes.delete('/projects/:projectId/members/:memberId', ProjectController.removeMember);
 routes.get('/projects/:id/finance', ProjectController.finance);
 routes.put('/projects/:id/finance', ProjectController.updateFinance);
 routes.get('/projects/:id/finance-summary', ProjectFinancialController.summary);
@@ -99,6 +102,7 @@ routes.get('/tasks/summary', TaskController.summary);
 routes.get('/tasks/today', TaskController.today);
 routes.get('/tasks/project/:project_id', TaskController.filterByProject);
 routes.put('/tasks/:id', TaskController.update);
+routes.patch('/tasks/:id/status', TaskController.updateStatus);
 routes.delete('/tasks/:id', TaskController.destroy);      
 
 // --- FINANCEIRO PESSOAL E DÍVIDAS ---

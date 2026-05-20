@@ -13,6 +13,7 @@ const PersonalTransactionController = require('../src/controllers/PersonalTransa
 const ServiceController = require('../src/controllers/ServiceController');
 const SessionController = require('../src/controllers/SessionController');
 const TaskController = require('../src/controllers/TaskController');
+const TeamController = require('../src/controllers/TeamController');
 const DocumentController = require('../src/controllers/DocumentController');
 const UserController = require('../src/controllers/UserController');
 const authMiddleware = require('../src/middlewares/auth');
@@ -576,6 +577,156 @@ test('project owner can transfer ownership to an existing project member', async
         });
         assert.equal(oldOwnerShow.statusCode, 200);
         assert.equal(oldOwnerShow.body.access_role, 'collaborator');
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project owner removes collaborator and removed collaborator loses access', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const created = await callController(ProjectController.create, {
+            userId: seeded.ownerId,
+            body: {
+                client_id: seeded.clientId,
+                title: 'Projeto com colaborador removivel',
+                scope: 'individual',
+                base_value: 1800
+            }
+        });
+        assert.equal(created.statusCode, 201);
+
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'collaborator')",
+            [created.body.id, seeded.adminId]
+        );
+
+        const collaboratorBefore = await callController(ProjectController.show, {
+            userId: seeded.adminId,
+            params: { id: created.body.id }
+        });
+        assert.equal(collaboratorBefore.statusCode, 200);
+
+        const memberCannotRemove = await callController(ProjectController.removeMember, {
+            userId: seeded.adminId,
+            params: { projectId: created.body.id, memberId: seeded.ownerId }
+        });
+        assert.equal(memberCannotRemove.statusCode, 403);
+
+        const ownerCannotRemoveSelf = await callController(ProjectController.removeMember, {
+            userId: seeded.ownerId,
+            params: { projectId: created.body.id, memberId: seeded.ownerId }
+        });
+        assert.equal(ownerCannotRemoveSelf.statusCode, 403);
+
+        const removed = await callController(ProjectController.removeMember, {
+            userId: seeded.ownerId,
+            params: { projectId: created.body.id, memberId: seeded.adminId }
+        });
+        assert.equal(removed.statusCode, 200);
+
+        const collaboratorAfter = await callController(ProjectController.show, {
+            userId: seeded.adminId,
+            params: { id: created.body.id }
+        });
+        assert.equal(collaboratorAfter.statusCode, 403);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('task status endpoint completes and reopens tasks without date cast errors', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const task = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                title: 'Conferir entrega',
+                due_date: '2026-06-20'
+            }
+        });
+        assert.equal(task.statusCode, 201);
+
+        const done = await callController(TaskController.updateStatus, {
+            userId: seeded.ownerId,
+            params: { id: task.body.id },
+            body: { status: 'done' }
+        });
+        assert.equal(done.statusCode, 200);
+
+        let saved = await db.get('SELECT status, completed_at FROM tasks WHERE id = ?', [task.body.id]);
+        assert.equal(saved.status, 'concluido');
+        assert.ok(saved.completed_at);
+
+        const reopened = await callController(TaskController.updateStatus, {
+            userId: seeded.ownerId,
+            params: { id: task.body.id },
+            body: { status: 'pending' }
+        });
+        assert.equal(reopened.statusCode, 200);
+
+        saved = await db.get('SELECT status, completed_at FROM tasks WHERE id = ?', [task.body.id]);
+        assert.equal(saved.status, 'pendente');
+        assert.equal(saved.completed_at, null);
+
+        const blocked = await callController(TaskController.updateStatus, {
+            userId: seeded.outsideId,
+            params: { id: task.body.id },
+            body: { status: 'done' }
+        });
+        assert.equal(blocked.statusCode, 404);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('team archive and restore are owner-only and filtered by status', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const memberBlocked = await callController(TeamController.archive, {
+            userId: seeded.memberId,
+            params: { id: seeded.teamId }
+        });
+        assert.equal(memberBlocked.statusCode, 403);
+
+        const archived = await callController(TeamController.archive, {
+            userId: seeded.ownerId,
+            params: { id: seeded.teamId }
+        });
+        assert.equal(archived.statusCode, 200);
+
+        const activeList = await callController(TeamController.index, {
+            userId: seeded.ownerId,
+            query: {}
+        });
+        assert.equal(activeList.statusCode, 200);
+        assert.equal(activeList.body.some(team => team.id === seeded.teamId), false);
+
+        const archivedList = await callController(TeamController.index, {
+            userId: seeded.ownerId,
+            query: { status: 'archived' }
+        });
+        assert.equal(archivedList.statusCode, 200);
+        assert.equal(archivedList.body.some(team => team.id === seeded.teamId), true);
+
+        const restored = await callController(TeamController.restore, {
+            userId: seeded.ownerId,
+            params: { id: seeded.teamId }
+        });
+        assert.equal(restored.statusCode, 200);
+
+        const restoredActiveList = await callController(TeamController.index, {
+            userId: seeded.ownerId,
+            query: {}
+        });
+        assert.equal(restoredActiveList.body.some(team => team.id === seeded.teamId), true);
     } finally {
         await cleanup();
     }

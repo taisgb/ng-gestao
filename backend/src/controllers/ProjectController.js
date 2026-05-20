@@ -503,6 +503,52 @@ module.exports = {
         }
     },
 
+    async removeMember(req, res) {
+        try {
+            const { projectId, memberId } = req.params;
+            const targetUserId = Number(memberId);
+            const db = await connectDb();
+
+            if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+                return res.status(400).json({ error: 'Membro invalido.' });
+            }
+
+            const project = await getProjectAccess(db, projectId, req.userId);
+            if (!project) {
+                return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            }
+
+            const isTeamEditor = project.scope === 'team' && ['owner', 'admin', 'gestor'].includes(project.access_role);
+            const canRemove = project.access_role === 'owner' || isTeamEditor;
+            if (!canRemove) {
+                return res.status(403).json({ error: 'Sem permissao para remover membros deste projeto.' });
+            }
+
+            if (Number(project.user_id) === targetUserId) {
+                return res.status(403).json({ error: 'Transfira a propriedade antes de remover o dono atual.' });
+            }
+
+            const member = await db.get(
+                'SELECT * FROM project_members WHERE project_id = ? AND user_id = ?',
+                [projectId, targetUserId]
+            );
+            if (!member) {
+                return res.status(404).json({ error: 'Membro nao encontrado neste projeto.' });
+            }
+            if (member.role === 'owner') {
+                return res.status(403).json({ error: 'Transfira a propriedade antes de remover o dono atual.' });
+            }
+
+            await db.run('DELETE FROM project_members WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+            await db.run('DELETE FROM project_financial_shares WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+
+            return res.json({ message: 'Membro removido do projeto.' });
+        } catch (error) {
+            console.error('[ProjectController.removeMember]', error);
+            return res.status(500).json({ error: 'Erro ao remover membro do projeto.' });
+        }
+    },
+
     async statuses(req, res) {
         try {
             const { id } = req.params;

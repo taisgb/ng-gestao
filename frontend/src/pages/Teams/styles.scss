@@ -38,6 +38,27 @@
     }
   }
 
+  .team-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+
+    button {
+      background: var(--surface, #fff);
+      border: 1px solid var(--border-color, #d9e2ef);
+      color: var(--text-muted, #758195);
+      min-height: 36px;
+      padding: 0 13px;
+
+      &.active {
+        background: var(--accent, #34516f);
+        border-color: var(--accent, #34516f);
+        color: #fff;
+      }
+    }
+  }
+
   input,
   select {
     min-width: 0;
@@ -70,24 +91,53 @@
     flex-direction: column;
     gap: 8px;
 
-    button {
+    .team-list-item {
+      border: 1px solid transparent;
+      border-radius: 8px;
+      display: grid;
+      gap: 8px;
+      padding: 8px;
+
+      &.active {
+        border-color: var(--accent, #34516f);
+        background: rgba(52, 81, 111, 0.08);
+      }
+
+      &.archived {
+        opacity: 0.76;
+      }
+    }
+
+    .team-select {
       background: transparent;
       color: var(--text-primary, #243047);
-      border: 1px solid transparent;
+      border: 0;
       text-align: left;
       display: flex;
       justify-content: space-between;
       gap: 10px;
-
-      &.active {
-        border-color: var(--accent, #34516f);
-        background: rgba(52, 81, 111, 0.1);
-      }
+      padding: 4px 0;
 
       span {
         color: var(--text-muted, #758195);
         font-size: 0.82rem;
       }
+    }
+
+    .team-danger,
+    .team-restore {
+      background: transparent;
+      border: 1px solid var(--border-color, #d9e2ef);
+      justify-self: flex-start;
+      padding: 7px 10px;
+    }
+
+    .team-danger {
+      color: #c24141;
+    }
+
+    .team-restore {
+      color: var(--accent, #34516f);
     }
   }
 
@@ -110,6 +160,14 @@
 
     h2 { color: var(--text-primary, #243047); }
     p { color: var(--text-muted, #758195); margin-top: 4px; }
+  }
+
+  .team-title-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
   }
 
   .invite-form {
@@ -156,6 +214,16 @@
     white-space: nowrap;
   }
 
+  .archive-badge {
+    background: rgba(194, 65, 65, 0.12);
+    border-radius: 999px;
+    color: #c24141;
+    font-size: 0.76rem;
+    font-weight: 800;
+    padding: 6px 9px;
+    white-space: nowrap;
+  }
+
   .empty-msg {
     color: var(--text-muted, #758195);
   }
@@ -173,7 +241,8 @@
 
     .team-title,
     .member-row,
-    .member-actions {
+    .member-actions,
+    .team-title-actions {
       align-items: flex-start;
       flex-direction: column;
     }

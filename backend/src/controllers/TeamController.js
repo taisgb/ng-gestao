@@ -6,11 +6,21 @@ module.exports = {
     async index(req, res) {
         try {
             const db = await connectDb();
+            const status = ['active', 'archived', 'all'].includes(req.query.status)
+                ? req.query.status
+                : 'active';
+            const statusWhere = {
+                active: 'AND COALESCE(t.archived, 0) = 0',
+                archived: 'AND COALESCE(t.archived, 0) = 1',
+                all: ''
+            }[status];
             const teams = await db.all(`
                 SELECT t.*, tm.role as my_role
                 FROM teams t
                 JOIN team_members tm ON tm.team_id = t.id
-                WHERE tm.user_id = ? AND tm.status = 'active' AND t.archived = 0
+                WHERE tm.user_id = ?
+                  AND tm.status = 'active'
+                  ${statusWhere}
                 ORDER BY t.created_at DESC
             `, [req.userId]);
 
@@ -93,6 +103,10 @@ module.exports = {
     },
 
     async destroy(req, res) {
+        return module.exports.archive(req, res);
+    },
+
+    async archive(req, res) {
         try {
             const { id } = req.params;
             const db = await connectDb();
@@ -105,8 +119,26 @@ module.exports = {
             await db.run('UPDATE teams SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
             return res.json({ message: 'Time arquivado.' });
         } catch (error) {
-            console.error('[TeamController.destroy]', error);
+            console.error('[TeamController.archive]', error);
             return res.status(500).json({ error: 'Erro ao arquivar time.' });
+        }
+    },
+
+    async restore(req, res) {
+        try {
+            const { id } = req.params;
+            const db = await connectDb();
+            const role = await getTeamRole(db, req.userId, id);
+
+            if (role !== 'owner') {
+                return res.status(403).json({ error: 'Apenas owner pode restaurar o time.' });
+            }
+
+            await db.run('UPDATE teams SET archived = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+            return res.json({ message: 'Time restaurado.' });
+        } catch (error) {
+            console.error('[TeamController.restore]', error);
+            return res.status(500).json({ error: 'Erro ao restaurar time.' });
         }
     },
 

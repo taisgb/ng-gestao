@@ -32,13 +32,14 @@ function normalizeType(type) {
 }
 
 function normalizeStatus(status) {
-    if (status === 'done') return 'concluído';
+    if (status === 'done') return 'concluido';
+    if (status === 'pending') return 'pendente';
     if (status === 'open') return 'pendente';
     return status || 'pendente';
 }
 
 function isDone(status) {
-    return DONE_STATUSES.includes(status);
+    return DONE_STATUSES.includes(status) || String(status || '').toLowerCase().startsWith('conclu');
 }
 
 async function canAccessTaskRow(db, task, userId, requireEdit = false) {
@@ -494,14 +495,14 @@ module.exports = {
                 addField('status', nextStatus, 'TEXT');
 
                 if (isDone(nextStatus)) {
-                    addField('completed_at', new Date().toISOString(), 'TEXT');
+                    addField('completed_at', new Date().toISOString(), 'TIMESTAMP');
                 } else if (nextStatus === 'pendente') {
                     fields.push('completed_at = NULL');
                 }
             }
 
             if (req.body.due_date !== undefined) {
-                addField('due_date', req.body.due_date || null, 'TEXT');
+                addField('due_date', req.body.due_date || null, 'DATE');
             }
 
             if (req.body.assigned_to !== undefined) {
@@ -532,6 +533,10 @@ module.exports = {
             console.error('[TaskController.update]', error);
             return res.status(500).json({ error: 'Erro ao atualizar tarefa.' });
         }
+    },
+
+    async updateStatus(req, res) {
+        return module.exports.update(req, res);
     },
 
     async destroy(req, res) {

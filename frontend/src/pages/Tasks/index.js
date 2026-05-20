@@ -29,6 +29,10 @@ const emptyForm = {
   team_id: ''
 };
 
+function isTaskDone(status) {
+  return doneStatuses.includes(status) || String(status || '').toLowerCase().startsWith('conclu');
+}
+
 export default function Tasks() {
   const { user } = useAuth();
   const [tab, setTab] = useState('list');
@@ -95,7 +99,11 @@ export default function Tasks() {
 
   async function patchTask(task, payload, message = 'Tarefa atualizada.') {
     try {
-      await api.put(`/tasks/${task.id}`, payload);
+      if (Object.keys(payload).length === 1 && payload.status !== undefined) {
+        await api.patch(`/tasks/${task.id}/status`, payload);
+      } else {
+        await api.put(`/tasks/${task.id}`, payload);
+      }
       await loadData();
       setFeedback(message);
     } catch (err) {
@@ -117,7 +125,7 @@ export default function Tasks() {
   }
 
   function renderTask(task) {
-    const done = doneStatuses.includes(task.status);
+    const done = isTaskDone(task.status);
     const overdue = task.due_date && task.due_date < new Date().toISOString().split('T')[0] && !done;
 
     return (

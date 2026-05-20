@@ -363,6 +363,40 @@ export default function ProjectDetails() {
     }
   }
 
+  async function handleToggleTask(task) {
+    const done = String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done';
+    const nextStatus = done ? 'pending' : 'done';
+    const previousTasks = tasks;
+
+    setTasks(current => current.map(item => (
+      item.id === task.id
+        ? { ...item, status: done ? 'pendente' : 'concluido' }
+        : item
+    )));
+
+    try {
+      await api.patch(`/tasks/${task.id}/status`, { status: nextStatus });
+      await loadProjectData();
+      setFeedback(done ? 'Tarefa reaberta.' : 'Tarefa concluida.');
+    } catch (err) {
+      setTasks(previousTasks);
+      setFeedback(err.response?.data?.error || 'Erro ao atualizar tarefa.');
+    }
+  }
+
+  async function handleRemoveProjectMember(member) {
+    const confirmed = window.confirm('Remover esta pessoa do projeto?');
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/projects/${id}/members/${member.id}`);
+      await loadProjectData();
+      setFeedback('Membro removido do projeto.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao remover membro do projeto.');
+    }
+  }
+
   if (loading) return <div className="loading">Carregando detalhes...</div>;
   if (!project) return <div className="error">{errorMessage || 'Projeto nao encontrado.'}</div>;
 
@@ -377,6 +411,7 @@ export default function ProjectDetails() {
   const formatCurrency = value =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
   const canTransferOwner = project.access_role === 'owner';
+  const canManageProjectMembers = ['owner', 'admin', 'gestor'].includes(project.access_role);
   const transferCandidates = members.filter(member => member.role !== 'owner');
   const financeKpis = [
     ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
@@ -692,8 +727,16 @@ export default function ProjectDetails() {
           <div className="members-list">
             {members.map(member => (
               <div key={`${member.role}-${member.id}`} className="member-item">
-                <strong>{member.name}</strong>
-                <span>{member.role === 'owner' ? 'Dono' : 'Colaborador'}</span>
+                <div>
+                  <strong>{member.name}</strong>
+                  <span>{member.email}</span>
+                </div>
+                <div className="member-actions">
+                  <span className={`role-badge ${member.role}`}>{member.role === 'owner' ? 'Dono' : 'Colaborador'}</span>
+                  {canManageProjectMembers && member.role !== 'owner' && (
+                    <button type="button" onClick={() => handleRemoveProjectMember(member)}>Remover</button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -705,9 +748,17 @@ export default function ProjectDetails() {
           <h2>Tarefas do Projeto</h2>
           <div className="tasks-mini-list">
             {tasks.length > 0 ? tasks.map(task => (
-              <div key={task.id} className="task-item">
-                <input type="checkbox" checked={task.status === 'concluido' || task.status === 'concluído'} readOnly />
-                <span>{task.title}</span>
+              <div
+                key={task.id}
+                className={`task-item ${String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done' ? 'done' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done'}
+                  onChange={() => handleToggleTask(task)}
+                />
+                <span className={String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done' ? 'done' : ''}>{task.title}</span>
+                {(String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done') && <small>Concluida</small>}
               </div>
             )) : <p className="empty">Nenhuma tarefa criada.</p>}
           </div>

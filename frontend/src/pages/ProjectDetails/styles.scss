@@ -518,6 +518,7 @@ $line: #ece7df;
       gap: 12px;
       padding: 9px 0;
       border-bottom: 1px solid $sand-bg;
+      align-items: center;
 
       strong {
         color: $earth-brown;
@@ -527,6 +528,34 @@ $line: #ece7df;
       span {
         color: #777;
         font-size: 0.8rem;
+      }
+
+      .member-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+
+        button {
+          background: transparent;
+          border: 1px solid $line;
+          border-radius: 8px;
+          color: #c24141;
+          cursor: pointer;
+          font-size: 0.78rem;
+          font-weight: 700;
+          padding: 7px 9px;
+        }
+      }
+
+      .role-badge {
+        background: $sand-bg;
+        border-radius: 999px;
+        color: $ink-blue;
+        font-size: 0.74rem;
+        font-weight: 800;
+        padding: 5px 8px;
       }
     }
   }
@@ -573,6 +602,36 @@ $line: #ece7df;
       padding: 10px 0;
       border-bottom: 1px solid $sand-bg;
       font-size: 0.9rem;
+    }
+
+    .task-item {
+      justify-content: flex-start;
+
+      input {
+        flex: 0 0 auto;
+      }
+
+      span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      small {
+        background: #eef7ed;
+        border-radius: 999px;
+        color: $leaf-green;
+        font-size: 0.72rem;
+        font-weight: 800;
+        margin-left: auto;
+        padding: 4px 8px;
+        white-space: nowrap;
+      }
+
+      &.done span,
+      span.done {
+        color: #888;
+        text-decoration: line-through;
+      }
     }
 
     .finance-item.receita strong {
@@ -691,6 +750,15 @@ $line: #ece7df;
 
       button {
         min-height: 40px;
+      }
+    }
+
+    .members-list .member-item {
+      align-items: flex-start;
+      flex-direction: column;
+
+      .member-actions {
+        justify-content: flex-start;
       }
     }
 

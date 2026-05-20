@@ -16,20 +16,21 @@ export default function Teams() {
   const [members, setMembers] = useState([]);
   const [form, setForm] = useState({ name: '', description: '' });
   const [invite, setInvite] = useState({ email: '', role: 'member' });
+  const [statusFilter, setStatusFilter] = useState('active');
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(true);
 
   const loadTeams = useCallback(async () => {
     try {
-      const response = await api.get('/teams');
+      const response = await api.get(`/teams?status=${statusFilter}`);
       setTeams(response.data);
-      setSelectedTeam(current => current || response.data[0] || null);
+      setSelectedTeam(current => response.data.find(team => team.id === current?.id) || response.data[0] || null);
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao carregar times.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter]);
 
   const loadMembers = useCallback(async (teamId) => {
     if (!teamId) return;
@@ -91,6 +92,9 @@ export default function Teams() {
   }
 
   async function handleRemove(member) {
+    const confirmed = window.confirm('Remover este membro do time?');
+    if (!confirmed) return;
+
     try {
       await api.delete(`/teams/${selectedTeam.id}/members/${member.id}`);
       await loadMembers(selectedTeam.id);
@@ -100,7 +104,31 @@ export default function Teams() {
     }
   }
 
+  async function handleArchiveTeam(team) {
+    const confirmed = window.confirm('Arquivar este time? Os dados nao serao apagados e poderao ser restaurados.');
+    if (!confirmed) return;
+
+    try {
+      await api.patch(`/teams/${team.id}/archive`);
+      await loadTeams();
+      setFeedback('Time arquivado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar time.');
+    }
+  }
+
+  async function handleRestoreTeam(team) {
+    try {
+      await api.patch(`/teams/${team.id}/restore`);
+      await loadTeams();
+      setFeedback('Time restaurado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar time.');
+    }
+  }
+
   const canManage = ['owner', 'admin'].includes(selectedTeam?.my_role);
+  const selectedTeamArchived = Number(selectedTeam?.archived || 0) === 1;
 
   return (
     <div className="teams-container">
@@ -130,19 +158,50 @@ export default function Teams() {
         </form>
       </section>
 
+      <div className="team-tabs" role="tablist" aria-label="Filtro de times">
+        {[
+          ['active', 'Ativos'],
+          ['archived', 'Arquivados'],
+          ['all', 'Todos']
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={statusFilter === value ? 'active' : ''}
+            onClick={() => setStatusFilter(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="teams-layout">
         <aside className="team-list">
           {loading && <p>Carregando...</p>}
           {teams.map(team => (
-            <button
+            <article
               key={team.id}
-              type="button"
-              className={selectedTeam?.id === team.id ? 'active' : ''}
-              onClick={() => setSelectedTeam(team)}
+              className={`team-list-item ${selectedTeam?.id === team.id ? 'active' : ''} ${Number(team.archived || 0) === 1 ? 'archived' : ''}`}
             >
-              <strong>{team.name}</strong>
-              <span>{ROLE_LABELS[team.my_role] || team.my_role}</span>
-            </button>
+              <button type="button" className="team-select" onClick={() => setSelectedTeam(team)}>
+                <strong>{team.name}</strong>
+                <span>
+                  {ROLE_LABELS[team.my_role] || team.my_role}
+                  {Number(team.archived || 0) === 1 ? ' - Arquivado' : ''}
+                </span>
+              </button>
+
+              {team.my_role === 'owner' && Number(team.archived || 0) === 0 && (
+                <button type="button" className="team-danger" onClick={() => handleArchiveTeam(team)}>
+                  Arquivar
+                </button>
+              )}
+              {team.my_role === 'owner' && Number(team.archived || 0) === 1 && (
+                <button type="button" className="team-restore" onClick={() => handleRestoreTeam(team)}>
+                  Restaurar
+                </button>
+              )}
+            </article>
           ))}
           {!loading && teams.length === 0 && <p className="empty-msg">Nenhum time criado ainda.</p>}
         </aside>
@@ -155,10 +214,13 @@ export default function Teams() {
                   <h2>{selectedTeam.name}</h2>
                   <p>{selectedTeam.description || 'Sem descricao'}</p>
                 </div>
-                <span className={`role-badge ${selectedTeam.my_role}`}>{ROLE_LABELS[selectedTeam.my_role]}</span>
+                <div className="team-title-actions">
+                  {selectedTeamArchived && <span className="archive-badge">Arquivado</span>}
+                  <span className={`role-badge ${selectedTeam.my_role}`}>{ROLE_LABELS[selectedTeam.my_role]}</span>
+                </div>
               </div>
 
-              {canManage && (
+              {canManage && !selectedTeamArchived && (
                 <form onSubmit={handleInvite} className="invite-form">
                   <input
                     type="email"
@@ -183,7 +245,7 @@ export default function Teams() {
                     </div>
                     <div className="member-actions">
                       <span className={`role-badge ${member.role}`}>{ROLE_LABELS[member.role]}</span>
-                      {canManage && member.role !== 'owner' && (
+                      {canManage && !selectedTeamArchived && member.role !== 'owner' && (
                         <>
                           <select value={member.role} onChange={e => handleRole(member, e.target.value)}>
                             {ROLES.map(role => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
