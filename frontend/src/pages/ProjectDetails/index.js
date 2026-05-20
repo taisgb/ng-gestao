@@ -5,7 +5,10 @@ import './styles.scss';
 
 const ENTRY_TYPES = [
   { value: 'income', label: 'Receita' },
+  { value: 'scope_increase', label: 'Aumento de escopo' },
   { value: 'expense', label: 'Despesa' },
+  { value: 'operational_cost', label: 'Custo operacional' },
+  { value: 'transfer', label: 'Repasse' },
   { value: 'reimbursement', label: 'Reembolso' },
   { value: 'received_payment', label: 'Pagamento recebido' },
   { value: 'scope_adjustment', label: 'Ajuste de escopo' }
@@ -28,6 +31,18 @@ const DOCUMENT_TYPES = [
   ['other', 'Outro']
 ];
 
+const ENTRY_TAB_CONFIG = [
+  ['all', 'Todos'],
+  ['income', 'Receitas'],
+  ['expense', 'Despesas'],
+  ['reimbursement', 'Reembolsos'],
+  ['archived', 'Arquivados']
+];
+
+const incomeTypes = ['income', 'scope_increase', 'scope_adjustment', 'received_payment'];
+const expenseTypes = ['expense', 'operational_cost', 'transfer'];
+const reimbursementTypes = ['reimbursement'];
+
 export default function ProjectDetails() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
@@ -36,6 +51,7 @@ export default function ProjectDetails() {
   const [finance, setFinance] = useState(null);
   const [projectFinanceSummary, setProjectFinanceSummary] = useState(null);
   const [projectEntries, setProjectEntries] = useState([]);
+  const [entryTab, setEntryTab] = useState('all');
   const [canEditProjectEntries, setCanEditProjectEntries] = useState(false);
   const [entryForm, setEntryForm] = useState({
     type: 'income',
@@ -362,6 +378,31 @@ export default function ProjectDetails() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
   const canTransferOwner = project.access_role === 'owner';
   const transferCandidates = members.filter(member => member.role !== 'owner');
+  const financeKpis = [
+    ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
+    ['Receitas adicionais', projectFinanceSummary?.additional_income],
+    ['Valor atualizado', projectFinanceSummary?.updated_value ?? projectFinanceSummary?.updated_total_value],
+    ['Recebido', projectFinanceSummary?.received ?? projectFinanceSummary?.total_received],
+    ['Pendente', projectFinanceSummary?.pending ?? projectFinanceSummary?.total_pending],
+    ['Despesas', projectFinanceSummary?.expenses ?? projectFinanceSummary?.total_expenses],
+    ['A reembolsar', projectFinanceSummary?.reimbursable_expenses],
+    ['Saldo liquido', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance]
+  ];
+  const entryTabCounts = {
+    all: projectEntries.length,
+    income: projectEntries.filter(entry => incomeTypes.includes(entry.type)).length,
+    expense: projectEntries.filter(entry => expenseTypes.includes(entry.type)).length,
+    reimbursement: projectEntries.filter(entry => reimbursementTypes.includes(entry.type)).length,
+    archived: projectEntries.filter(entry => entry.archived === 1).length
+  };
+  const visibleProjectEntries = projectEntries.filter(entry => {
+    if (entryTab === 'all') return entry.archived !== 1;
+    if (entryTab === 'archived') return entry.archived === 1;
+    if (entryTab === 'income') return entry.archived !== 1 && incomeTypes.includes(entry.type);
+    if (entryTab === 'expense') return entry.archived !== 1 && expenseTypes.includes(entry.type);
+    if (entryTab === 'reimbursement') return entry.archived !== 1 && reimbursementTypes.includes(entry.type);
+    return true;
+  });
 
   return (
     <div className="project-details-container">
@@ -454,14 +495,12 @@ export default function ProjectDetails() {
 
         {projectFinanceSummary && (
           <div className="entry-summary-grid">
-            <div><span>Valor do contrato</span><strong>{formatCurrency(projectFinanceSummary.base_contract_value)}</strong></div>
-            <div><span>Receitas adicionais</span><strong>{formatCurrency(projectFinanceSummary.additional_income)}</strong></div>
-            <div><span>Valor atualizado</span><strong>{formatCurrency(projectFinanceSummary.updated_total_value)}</strong></div>
-            <div><span>Recebido</span><strong>{formatCurrency(projectFinanceSummary.total_received)}</strong></div>
-            <div><span>Pendente</span><strong>{formatCurrency(projectFinanceSummary.total_pending)}</strong></div>
-            <div><span>Despesas</span><strong>{formatCurrency(projectFinanceSummary.total_expenses)}</strong></div>
-            <div><span>A reembolsar</span><strong>{formatCurrency(projectFinanceSummary.reimbursable_expenses)}</strong></div>
-            <div><span>Saldo liquido</span><strong>{formatCurrency(projectFinanceSummary.estimated_net_balance)}</strong></div>
+            {financeKpis.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{formatCurrency(value)}</strong>
+              </div>
+            ))}
           </div>
         )}
 
@@ -494,28 +533,50 @@ export default function ProjectDetails() {
           </form>
         )}
 
+        <div className="entry-tabs">
+          {ENTRY_TAB_CONFIG.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={entryTab === value ? 'active' : ''}
+              onClick={() => setEntryTab(value)}
+            >
+              {label} <span>{entryTabCounts[value] || 0}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="entries-table">
-          {projectEntries.map(entry => (
+          <div className="entries-header">
+            <span>Tipo</span>
+            <span>Categoria</span>
+            <span>Descricao</span>
+            <span>Status</span>
+            <span>Responsavel</span>
+            <span>Valor</span>
+            <span>Data</span>
+            <span>Acoes</span>
+          </div>
+          {visibleProjectEntries.map(entry => (
             <article key={entry.id}>
-              <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
-              <strong>{ENTRY_TYPES.find(type => type.value === entry.type)?.label || entry.type}</strong>
-              <span>{entry.description}</span>
+              <span className={`type-pill ${entry.type}`}>{ENTRY_TYPES.find(type => type.value === entry.type)?.label || entry.type}</span>
               <span>{entry.category}</span>
-              <span>{entry.status}</span>
+              <strong>{entry.description}</strong>
+              <span className={`status-pill ${entry.status}`}>{entry.status}</span>
+              <span>{entry.created_by_name || 'Voce'}</span>
               <strong>{formatCurrency(entry.amount)}</strong>
-              <span>{entry.affects_project_total ? 'Sim' : 'Nao'}</span>
-              <span>{entry.reimbursable ? 'Sim' : 'Nao'}</span>
-              {canEditProjectEntries && (
+              <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
+              {canEditProjectEntries ? (
                 <div>
-                  <button onClick={() => handleEntryStatus(entry, entry.type === 'expense' ? 'paid' : 'paid')}>Pago</button>
-                  <button onClick={() => handleEntryStatus(entry, 'reimbursed')}>Reembolsado</button>
+                  <button onClick={() => handleEntryStatus(entry, 'paid')}>Pago</button>
+                  <button onClick={() => handleEntryStatus(entry, 'reimbursed')}>Reembolsar</button>
                   <button onClick={() => handleEntryStatus(entry, 'canceled')}>Cancelar</button>
                   <button onClick={() => handleArchiveEntry(entry)}>Arquivar</button>
                 </div>
-              )}
+              ) : <span>-</span>}
             </article>
           ))}
-          {projectEntries.length === 0 && <p className="empty">Sem lancamentos do projeto.</p>}
+          {visibleProjectEntries.length === 0 && <p className="empty">Nenhum lancamento nesta visualizacao.</p>}
         </div>
       </section>
 

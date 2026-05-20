@@ -64,8 +64,8 @@ async function syncFromProjectFinancialEntry(db, entry) {
 
     let type = null;
     let source = 'project';
-    if (entry.type === 'expense') type = 'expense';
-    if (['income', 'received_payment', 'scope_adjustment'].includes(entry.type)) type = 'income';
+    if (['expense', 'operational_cost', 'transfer'].includes(entry.type)) type = 'expense';
+    if (['income', 'received_payment', 'scope_adjustment', 'scope_increase'].includes(entry.type)) type = 'income';
     if (entry.type === 'reimbursement') {
         type = 'income';
         source = 'reimbursement';

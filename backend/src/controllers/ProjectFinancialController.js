@@ -7,8 +7,9 @@ const {
     getProjectAccess
 } = require('../utils/permissions');
 const PersonalTransactionController = require('./PersonalTransactionController');
+const { calculateProjectFinancialSummary } = require('../services/projectFinancialSummary');
 
-const TYPES = ['income', 'expense', 'reimbursement', 'received_payment', 'scope_adjustment'];
+const TYPES = ['income', 'expense', 'reimbursement', 'received_payment', 'scope_adjustment', 'scope_increase', 'operational_cost', 'transfer'];
 const STATUSES = ['pending', 'paid', 'reimbursed', 'canceled'];
 
 async function getEntry(db, projectId, entryId) {
@@ -23,8 +24,8 @@ function normalizeBoolean(value) {
 }
 
 function transactionTypeFor(entry) {
-    if (entry.type === 'expense') return 'Despesa';
-    if (['income', 'reimbursement', 'received_payment', 'scope_adjustment'].includes(entry.type)) return 'Receita';
+    if (['expense', 'operational_cost', 'transfer'].includes(entry.type)) return 'Despesa';
+    if (['income', 'reimbursement', 'received_payment', 'scope_adjustment', 'scope_increase'].includes(entry.type)) return 'Receita';
     return null;
 }
 
@@ -65,42 +66,7 @@ async function syncPersonalTransaction(db, entry) {
 }
 
 async function getSummary(db, projectId) {
-    const project = await db.get('SELECT base_value FROM projects WHERE id = ?', [projectId]);
-    const rows = await db.all(`
-        SELECT type, amount, status, affects_project_total, reimbursable
-        FROM project_financial_entries
-        WHERE project_id = ? AND archived = 0 AND status != 'canceled'
-    `, [projectId]);
-
-    const base = Number(project?.base_value || 0);
-    const additionalIncome = rows
-        .filter(row => ['income', 'scope_adjustment'].includes(row.type) && row.affects_project_total)
-        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const paymentsReceived = rows
-        .filter(row => row.type === 'received_payment' && row.status === 'paid')
-        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const reimbursedAmount = rows
-        .filter(row => row.type === 'reimbursement' && ['paid', 'reimbursed'].includes(row.status))
-        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const totalExpenses = rows
-        .filter(row => row.type === 'expense')
-        .reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    const reimbursableExpenses = Math.max(0, rows
-        .filter(row => row.type === 'expense' && row.reimbursable && row.status !== 'reimbursed')
-        .reduce((sum, row) => sum + Number(row.amount || 0), 0) - reimbursedAmount);
-    const updatedTotalValue = base + additionalIncome;
-
-    return {
-        base_contract_value: base,
-        additional_income: additionalIncome,
-        updated_total_value: updatedTotalValue,
-        total_received: paymentsReceived + reimbursedAmount,
-        total_pending: Math.max(0, updatedTotalValue - paymentsReceived),
-        total_expenses: totalExpenses,
-        reimbursable_expenses: reimbursableExpenses,
-        reimbursed_amount: reimbursedAmount,
-        estimated_net_balance: updatedTotalValue - totalExpenses
-    };
+    return calculateProjectFinancialSummary(db, projectId);
 }
 
 module.exports = {
@@ -121,7 +87,6 @@ module.exports = {
                 FROM project_financial_entries pfe
                 LEFT JOIN users u ON u.id = pfe.created_by
                 WHERE pfe.project_id = ?
-                  AND pfe.archived = 0
                   AND (? = 1 OR pfe.user_id = ? OR pfe.created_by = ?)
                 ORDER BY pfe.date DESC, pfe.id DESC
             `, [id, canViewGlobal ? 1 : 0, req.userId, req.userId]);

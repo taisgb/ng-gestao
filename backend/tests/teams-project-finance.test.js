@@ -189,6 +189,13 @@ test('project finance summary calculates scope changes, payments, expenses and r
                 project_id, team_id, user_id, created_by, type, description, category, amount, date, status,
                 affects_project_total, affects_my_financial, reimbursable
             )
+            VALUES (?, ?, ?, ?, 'income', 'Receita extra sem checkbox', 'servico adicional', 2000, '2026-05-01', 'pending', 0, 0, 0)
+        `, common);
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, description, category, amount, date, status,
+                affects_project_total, affects_my_financial, reimbursable
+            )
             VALUES (?, ?, ?, ?, 'received_payment', 'Parcela recebida', 'pagamento', 3000, '2026-05-02', 'paid', 0, 1, 0)
         `, common);
         await db.run(`
@@ -216,14 +223,18 @@ test('project finance summary calculates scope changes, payments, expenses and r
         const summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
 
         assert.equal(summary.base_contract_value, 4500);
-        assert.equal(summary.additional_income, 2500);
-        assert.equal(summary.updated_total_value, 7000);
-        assert.equal(summary.total_received, 3300);
-        assert.equal(summary.total_pending, 4000);
+        assert.equal(summary.additional_income, 4500);
+        assert.equal(summary.updated_total_value, 9000);
+        assert.equal(summary.updated_value, 9000);
+        assert.equal(summary.total_received, 5800);
+        assert.equal(summary.received, 5800);
+        assert.equal(summary.total_pending, 3200);
         assert.equal(summary.total_expenses, 800);
+        assert.equal(summary.expenses, 800);
         assert.equal(summary.reimbursable_expenses, 0);
         assert.equal(summary.reimbursed_amount, 300);
-        assert.equal(summary.estimated_net_balance, 6200);
+        assert.equal(summary.estimated_net_balance, 8200);
+        assert.equal(summary.net_balance, 8200);
     } finally {
         await cleanup();
     }
