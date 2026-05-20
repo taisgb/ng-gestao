@@ -476,6 +476,16 @@ $line: #ece7df;
       font-size: 0.9rem;
     }
 
+    select {
+      min-width: 0;
+      border: 1px solid $line;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.9rem;
+      background: #fff;
+      color: $earth-brown;
+    }
+
     button {
       border: 0;
       background: $leaf-green;
@@ -485,6 +495,14 @@ $line: #ece7df;
       font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
+    }
+  }
+
+  .transfer-owner-form {
+    margin-top: 10px;
+
+    button {
+      background: $ink-blue;
     }
   }
 

@@ -3,6 +3,15 @@ const TEAM_MANAGERS = ['owner', 'admin'];
 const TEAM_EDITORS = ['owner', 'admin', 'gestor'];
 const FINANCIAL_ROLES = ['owner', 'admin', 'gestor'];
 
+function isProjectOwner(project, userId) {
+    const normalizedUserId = Number(userId);
+    return ['user_id', 'owner_id', 'created_by'].some(field => (
+        project[field] !== undefined
+        && project[field] !== null
+        && Number(project[field]) === normalizedUserId
+    ));
+}
+
 async function getTeamRole(db, userId, teamId) {
     if (!teamId) return null;
 
@@ -48,7 +57,9 @@ async function getProjectAccess(db, userId, projectId) {
 
     if (!project) return null;
 
-    if (project.user_id === userId) {
+    const isIndividualProject = project.scope === 'individual' || !project.team_id;
+
+    if (isProjectOwner(project, userId)) {
         return { ...project, access_role: 'owner', team_role: project.team_id ? await getTeamRole(db, userId, project.team_id) : null };
     }
 
@@ -59,6 +70,10 @@ async function getProjectAccess(db, userId, projectId) {
 
     if (directMember) {
         return { ...project, access_role: directMember.role || 'member', team_role: null };
+    }
+
+    if (isIndividualProject) {
+        return null;
     }
 
     if (project.scope === 'team' && project.team_id) {
@@ -99,5 +114,6 @@ module.exports = {
     canViewTeamResource,
     getProjectAccess,
     getTeamRole,
+    isProjectOwner,
     isTeamMember
 };

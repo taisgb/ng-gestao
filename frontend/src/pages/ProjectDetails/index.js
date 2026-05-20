@@ -67,33 +67,46 @@ export default function ProjectDetails() {
     description: ''
   });
   const [inviteEmail, setInviteEmail] = useState('');
+  const [newOwnerId, setNewOwnerId] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [newNote, setNewNote] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(true);
 
   const loadProjectData = useCallback(async () => {
     try {
-      const [projRes, tasksRes, transRes, financeRes, statusesRes, membersRes, notesRes, entriesRes, summaryRes, docsRes] = await Promise.all([
-        api.get(`/projects/${id}`),
-        api.get(`/tasks?project_id=${id}`),
-        api.get(`/transactions?project_id=${id}`),
-        api.get(`/projects/${id}/finance`),
-        api.get(`/projects/${id}/statuses`),
-        api.get(`/projects/${id}/members`),
-        api.get(`/projects/${id}/notes`),
-        api.get(`/projects/${id}/financial-entries`).catch(() => ({ data: { entries: [], can_edit_global: false } })),
-        api.get(`/projects/${id}/finance-summary`).catch(() => ({ data: null })),
-        api.get(`/projects/${id}/documents?status=all`).catch(() => ({ data: [] }))
+      setErrorMessage('');
+      const projRes = await api.get(`/projects/${id}`);
+      setProject(projRes.data);
+
+      const safeGet = async (url, fallback) => {
+        try {
+          return await api.get(url);
+        } catch (err) {
+          console.error(`Erro ao carregar dado auxiliar do projeto: ${url}`, err.response?.data || err);
+          return { data: fallback };
+        }
+      };
+
+      const [tasksRes, transRes, financeRes, statusesRes, membersRes, notesRes, entriesRes, summaryRes, docsRes] = await Promise.all([
+        safeGet(`/tasks?project_id=${id}`, []),
+        safeGet(`/transactions?project_id=${id}`, []),
+        safeGet(`/projects/${id}/finance`, null),
+        safeGet(`/projects/${id}/statuses`, []),
+        safeGet(`/projects/${id}/members`, []),
+        safeGet(`/projects/${id}/notes`, []),
+        safeGet(`/projects/${id}/financial-entries`, { entries: [], can_edit_global: false }),
+        safeGet(`/projects/${id}/finance-summary`, null),
+        safeGet(`/projects/${id}/documents?status=all`, [])
       ]);
 
-      setProject(projRes.data);
       setTasks(tasksRes.data);
       setTransactions(transRes.data);
       setFinance(financeRes.data);
-      setTotalValueDraft(String(financeRes.data.total_value || ''));
+      setTotalValueDraft(String(financeRes.data?.total_value || projRes.data?.base_value || ''));
       setShareDrafts(
-        financeRes.data.shares.reduce((acc, share) => {
+        (financeRes.data?.shares || []).reduce((acc, share) => {
           acc[share.user_id] = String(share.amount || '');
           return acc;
         }, {})
@@ -106,7 +119,15 @@ export default function ProjectDetails() {
       setProjectFinanceSummary(summaryRes.data);
       setDocuments(docsRes.data || []);
     } catch (err) {
-      console.error('Erro ao carregar detalhes do projeto', err);
+      console.error('Erro ao carregar detalhes do projeto', err.response?.data || err);
+      setProject(null);
+      if (err.response?.status === 403) {
+        setErrorMessage(err.response?.data?.error || 'Sem permissao para acessar este projeto.');
+      } else if (err.response?.status === 404) {
+        setErrorMessage(err.response?.data?.error || 'Projeto nao encontrado.');
+      } else {
+        setErrorMessage(err.response?.data?.error || 'Erro ao carregar detalhes do projeto.');
+      }
     } finally {
       setLoading(false);
     }
@@ -191,6 +212,29 @@ export default function ProjectDetails() {
       setFeedback('Divisao financeira atualizada.');
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao salvar divisao financeira.');
+    }
+  }
+
+  async function handleTransferOwner(e) {
+    e.preventDefault();
+    setFeedback('');
+
+    if (!newOwnerId) {
+      setFeedback('Selecione o novo dono do projeto.');
+      return;
+    }
+
+    const selectedMember = members.find(member => String(member.id) === String(newOwnerId));
+    const confirmed = window.confirm(`Deseja repassar este projeto para ${selectedMember?.name || 'este usuario'}?`);
+    if (!confirmed) return;
+
+    try {
+      await api.patch(`/projects/${id}/owner`, { new_owner_id: Number(newOwnerId) });
+      setNewOwnerId('');
+      await loadProjectData();
+      setFeedback('Dono do projeto atualizado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao repassar projeto.');
     }
   }
 
@@ -304,7 +348,7 @@ export default function ProjectDetails() {
   }
 
   if (loading) return <div className="loading">Carregando detalhes...</div>;
-  if (!project) return <div className="error">Projeto nao encontrado.</div>;
+  if (!project) return <div className="error">{errorMessage || 'Projeto nao encontrado.'}</div>;
 
   const totalIncome = transactions
     .filter(t => t.type === 'Receita')
@@ -316,6 +360,8 @@ export default function ProjectDetails() {
 
   const formatCurrency = value =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
+  const canTransferOwner = project.access_role === 'owner';
+  const transferCandidates = members.filter(member => member.role !== 'owner');
 
   return (
     <div className="project-details-container">
@@ -567,6 +613,20 @@ export default function ProjectDetails() {
             />
             <button type="submit">Convidar</button>
           </form>
+
+          {canTransferOwner && transferCandidates.length > 0 && (
+            <form onSubmit={handleTransferOwner} className="inline-form transfer-owner-form">
+              <select value={newOwnerId} onChange={e => setNewOwnerId(e.target.value)}>
+                <option value="">Novo dono</option>
+                {transferCandidates.map(member => (
+                  <option key={member.id} value={member.id}>
+                    {member.name} - {member.email}
+                  </option>
+                ))}
+              </select>
+              <button type="submit">Repassar projeto</button>
+            </form>
+          )}
 
           <div className="members-list">
             {members.map(member => (

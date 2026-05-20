@@ -5,7 +5,8 @@ const {
     canViewProjectFinancials,
     canEditTeamResource,
     canViewTeamResource,
-    getProjectAccess: getSharedProjectAccess
+    getProjectAccess: getSharedProjectAccess,
+    isProjectOwner
 } = require('../utils/permissions');
 
 const DEFAULT_STATUSES = ['pendente', 'aprovado', 'em andamento', 'concluído', 'garantia'];
@@ -251,8 +252,15 @@ module.exports = {
             const { id } = req.params;
             const db = await connectDb();
 
+            const existingProject = await db.get('SELECT id FROM projects WHERE id = ?', [id]);
+            if (!existingProject) {
+                return res.status(404).json({ error: 'Projeto nao encontrado.' });
+            }
+
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado.' });
+            if (!project) {
+                return res.status(403).json({ error: 'Sem permissao para acessar este projeto.' });
+            }
 
             const canSeeFinancials = await canViewProjectFinancials(db, req.userId, id);
             const expenses = await db.get(`
@@ -409,6 +417,72 @@ module.exports = {
         } catch (error) {
             console.error('[ProjectController.share]', error);
             return res.status(500).json({ error: 'Erro ao compartilhar projeto.' });
+        }
+    },
+
+    async transferOwner(req, res) {
+        try {
+            const { id } = req.params;
+            const newOwnerId = Number(req.body.new_owner_id || req.body.user_id);
+
+            if (!Number.isInteger(newOwnerId) || newOwnerId <= 0) {
+                return res.status(400).json({ error: 'Informe o novo dono do projeto.' });
+            }
+
+            const db = await connectDb();
+            const project = await db.get('SELECT * FROM projects WHERE id = ?', [id]);
+
+            if (!project) {
+                return res.status(404).json({ error: 'Projeto nao encontrado.' });
+            }
+
+            if (!isProjectOwner(project, req.userId)) {
+                return res.status(403).json({ error: 'Apenas o dono atual pode repassar este projeto.' });
+            }
+
+            if (Number(project.user_id) === newOwnerId) {
+                return res.status(400).json({ error: 'Este usuario ja e o dono do projeto.' });
+            }
+
+            const newOwner = await db.get('SELECT id, name, email FROM users WHERE id = ?', [newOwnerId]);
+            if (!newOwner) {
+                return res.status(404).json({ error: 'Novo dono nao encontrado.' });
+            }
+
+            const newOwnerAccess = await getSharedProjectAccess(db, newOwnerId, id);
+            if (!newOwnerAccess) {
+                return res.status(403).json({ error: 'O novo dono precisa ja ter acesso ao projeto.' });
+            }
+
+            await db.run('UPDATE projects SET user_id = ? WHERE id = ?', [newOwnerId, id]);
+            await db.run(`
+                INSERT OR IGNORE INTO project_members (project_id, user_id, role)
+                VALUES (?, ?, 'collaborator')
+            `, [id, req.userId]);
+            await db.run(`
+                INSERT OR IGNORE INTO project_members (project_id, user_id, role)
+                VALUES (?, ?, 'owner')
+            `, [id, newOwnerId]);
+            await db.run(
+                "UPDATE project_members SET role = 'collaborator', updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND user_id = ?",
+                [id, req.userId]
+            );
+            await db.run(
+                "UPDATE project_members SET role = 'owner', updated_at = CURRENT_TIMESTAMP WHERE project_id = ? AND user_id = ?",
+                [id, newOwnerId]
+            );
+            await db.run(`
+                INSERT OR IGNORE INTO project_financial_shares (project_id, user_id, amount)
+                VALUES (?, ?, 0)
+            `, [id, newOwnerId]);
+
+            return res.json({
+                message: 'Dono do projeto atualizado.',
+                owner: newOwner
+            });
+        } catch (error) {
+            console.error('[ProjectController.transferOwner]', error);
+            return res.status(500).json({ error: 'Erro ao repassar projeto.' });
         }
     },
 

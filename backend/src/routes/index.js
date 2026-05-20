@@ -77,6 +77,7 @@ routes.get('/projects/:id', ProjectController.show);
 routes.put('/projects/:id', ProjectController.update);
 routes.delete('/projects/:id', ProjectController.destroy);
 routes.post('/projects/:id/share', ProjectController.share);
+routes.patch('/projects/:id/owner', ProjectController.transferOwner);
 routes.get('/projects/:id/members', ProjectController.members);
 routes.get('/projects/:id/finance', ProjectController.finance);
 routes.put('/projects/:id/finance', ProjectController.updateFinance);

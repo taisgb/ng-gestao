@@ -122,6 +122,16 @@ module.exports = {
                 if (!project) return res.status(403).json({ error: 'Voce nao tem acesso a este projeto.' });
             }
 
+            const projectFilter = project_id ? 'AND t.project_id = ?' : '';
+            const params = [
+                req.userId,
+                req.userId,
+                req.userId,
+                req.userId,
+                req.userId
+            ];
+            if (project_id) params.push(project_id);
+
             const rows = await db.all(`
                 SELECT t.*, p.title as project_title, p.scope as project_scope, p.team_id as project_team_id,
                        c.name as client_name, teams.name as team_name, assignee.name as assigned_name
@@ -132,16 +142,16 @@ module.exports = {
                 LEFT JOIN users assignee ON assignee.id = t.assigned_to
                 LEFT JOIN project_members pm ON pm.project_id = t.project_id AND pm.user_id = ?
                 LEFT JOIN team_members tm ON tm.team_id = t.team_id AND tm.user_id = ? AND tm.status = 'active'
-                WHERE (? IS NULL OR t.project_id = ?)
-                  AND (
+                WHERE (
                     t.user_id = ?
                     OR t.created_by = ?
                     OR t.assigned_to = ?
                     OR pm.user_id IS NOT NULL
                     OR tm.user_id IS NOT NULL
                   )
+                  ${projectFilter}
                 ORDER BY COALESCE(t.due_date, '9999-12-31') ASC, t.id DESC
-            `, [req.userId, req.userId, project_id || null, project_id || null, req.userId, req.userId, req.userId]);
+            `, params);
 
             const allowed = [];
             for (const row of rows) {

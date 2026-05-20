@@ -361,6 +361,30 @@ test('team client can be used for an individual project without leaking to team 
         });
         assert.equal(memberList.body.some(item => item.id === created.body.id), true);
 
+        const memberShow = await callController(ProjectController.show, {
+            userId: seeded.memberId,
+            params: { id: created.body.id }
+        });
+        assert.equal(memberShow.statusCode, 200);
+        assert.equal(memberShow.body.id, created.body.id);
+        assert.equal(memberShow.body.scope, 'individual');
+
+        await db.run('DELETE FROM project_members WHERE project_id = ? AND user_id = ?', [created.body.id, seeded.memberId]);
+
+        const ownerShowWithoutProjectMember = await callController(ProjectController.show, {
+            userId: seeded.memberId,
+            params: { id: created.body.id }
+        });
+        assert.equal(ownerShowWithoutProjectMember.statusCode, 200);
+        assert.equal(ownerShowWithoutProjectMember.body.id, created.body.id);
+        assert.equal(ownerShowWithoutProjectMember.body.team_id, null);
+
+        const outsideShow = await callController(ProjectController.show, {
+            userId: seeded.outsideId,
+            params: { id: created.body.id }
+        });
+        assert.equal(outsideShow.statusCode, 403);
+
         const task = await callController(TaskController.create, {
             userId: seeded.memberId,
             body: {
@@ -417,13 +441,40 @@ test('team project adds only selected project members and keeps unselected team 
             userId: seeded.memberId,
             params: { id: created.body.id }
         });
-        assert.equal(unselectedShow.statusCode, 404);
+        assert.equal(unselectedShow.statusCode, 403);
 
         const unselectedFinance = await callController(ProjectController.finance, {
             userId: seeded.memberId,
             params: { id: created.body.id }
         });
         assert.equal(unselectedFinance.statusCode, 404);
+
+        const ownerShow = await callController(ProjectController.show, {
+            userId: seeded.ownerId,
+            params: { id: created.body.id }
+        });
+        assert.equal(ownerShow.statusCode, 200);
+        assert.equal(ownerShow.body.id, created.body.id);
+
+        const selectedShow = await callController(ProjectController.show, {
+            userId: seeded.adminId,
+            params: { id: created.body.id }
+        });
+        assert.equal(selectedShow.statusCode, 200);
+        assert.equal(selectedShow.body.id, created.body.id);
+
+        const gestorShow = await callController(ProjectController.show, {
+            userId: seeded.gestorId,
+            params: { id: created.body.id }
+        });
+        assert.equal(gestorShow.statusCode, 200);
+        assert.equal(gestorShow.body.id, created.body.id);
+
+        const missingShow = await callController(ProjectController.show, {
+            userId: seeded.ownerId,
+            params: { id: 999999 }
+        });
+        assert.equal(missingShow.statusCode, 404);
 
         const selectedList = await callController(ProjectController.index, {
             userId: seeded.adminId,
@@ -449,6 +500,71 @@ test('team project adds only selected project members and keeps unselected team 
             query: { project_id: created.body.id }
         });
         assert.equal(unselectedTasks.statusCode, 403);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project owner can transfer ownership to an existing project member', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const created = await callController(ProjectController.create, {
+            userId: seeded.ownerId,
+            body: {
+                client_id: seeded.clientId,
+                title: 'Projeto para repassar',
+                scope: 'individual',
+                base_value: 1200
+            }
+        });
+        assert.equal(created.statusCode, 201);
+
+        await db.run(`
+            INSERT OR IGNORE INTO project_members (project_id, user_id, role)
+            VALUES (?, ?, 'collaborator')
+        `, [created.body.id, seeded.adminId]);
+
+        const blocked = await callController(ProjectController.transferOwner, {
+            userId: seeded.memberId,
+            params: { id: created.body.id },
+            body: { new_owner_id: seeded.adminId }
+        });
+        assert.equal(blocked.statusCode, 403);
+
+        const transferred = await callController(ProjectController.transferOwner, {
+            userId: seeded.ownerId,
+            params: { id: created.body.id },
+            body: { new_owner_id: seeded.adminId }
+        });
+        assert.equal(transferred.statusCode, 200);
+
+        const project = await db.get('SELECT user_id FROM projects WHERE id = ?', [created.body.id]);
+        assert.equal(project.user_id, seeded.adminId);
+
+        const roles = await db.all(
+            'SELECT user_id, role FROM project_members WHERE project_id = ? ORDER BY user_id',
+            [created.body.id]
+        );
+        assert.deepEqual(roles, [
+            { user_id: seeded.ownerId, role: 'collaborator' },
+            { user_id: seeded.adminId, role: 'owner' }
+        ]);
+
+        const newOwnerShow = await callController(ProjectController.show, {
+            userId: seeded.adminId,
+            params: { id: created.body.id }
+        });
+        assert.equal(newOwnerShow.statusCode, 200);
+        assert.equal(newOwnerShow.body.access_role, 'owner');
+
+        const oldOwnerShow = await callController(ProjectController.show, {
+            userId: seeded.ownerId,
+            params: { id: created.body.id }
+        });
+        assert.equal(oldOwnerShow.statusCode, 200);
+        assert.equal(oldOwnerShow.body.access_role, 'collaborator');
     } finally {
         await cleanup();
     }
