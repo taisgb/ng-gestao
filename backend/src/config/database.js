@@ -83,6 +83,7 @@ const POSTGRES_SCHEMA = `
         user_id INTEGER NOT NULL REFERENCES users(id),
         client_id INTEGER NOT NULL REFERENCES clients(id),
         team_id INTEGER REFERENCES teams(id),
+        scope TEXT DEFAULT 'individual',
         title TEXT NOT NULL,
         description TEXT,
         status TEXT DEFAULT 'pendente',
@@ -101,6 +102,7 @@ const POSTGRES_SCHEMA = `
         user_id INTEGER NOT NULL REFERENCES users(id),
         role TEXT DEFAULT 'collaborator',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(project_id, user_id)
     );
 
@@ -404,7 +406,9 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'clients', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'clients', 'scope', "TEXT DEFAULT 'individual'");
     await ensurePostgresColumn(db, 'projects', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'projects', 'scope', "TEXT DEFAULT 'individual'");
     await ensurePostgresColumn(db, 'projects', 'archived_at', 'TIMESTAMP');
+    await ensurePostgresColumn(db, 'project_members', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
     await ensurePostgresColumn(db, 'services', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'services', 'scope', "TEXT DEFAULT 'individual'");
     await ensurePostgresColumn(db, 'services', 'default_value', 'DOUBLE PRECISION DEFAULT 0');
@@ -487,6 +491,8 @@ async function connectDb() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             client_id INTEGER NOT NULL,
+            team_id INTEGER,
+            scope TEXT DEFAULT 'individual',
             title TEXT NOT NULL,
             description TEXT,
             status TEXT DEFAULT 'pendente', 
@@ -558,6 +564,7 @@ async function connectDb() {
             user_id INTEGER NOT NULL,
             role TEXT DEFAULT 'collaborator',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(project_id, user_id),
             FOREIGN KEY (project_id) REFERENCES projects(id),
             FOREIGN KEY (user_id) REFERENCES users(id)
@@ -799,7 +806,9 @@ async function connectDb() {
     await ensureColumn('clients', 'scope', "TEXT DEFAULT 'individual'");
     await ensureColumn('clients', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('projects', 'team_id', 'INTEGER');
+    await ensureColumn('projects', 'scope', "TEXT DEFAULT 'individual'");
     await ensureColumn('projects', 'archived_at', 'DATETIME');
+    await ensureColumn('project_members', 'updated_at', 'DATETIME');
     await ensureColumn('services', 'team_id', 'INTEGER');
     await ensureColumn('services', 'scope', "TEXT DEFAULT 'individual'");
     await ensureColumn('services', 'default_value', 'REAL DEFAULT 0');

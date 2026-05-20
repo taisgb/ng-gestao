@@ -4,6 +4,7 @@ const {
     canEditProjectFinancials,
     canViewProjectFinancials,
     canEditTeamResource,
+    canViewTeamResource,
     getProjectAccess: getSharedProjectAccess
 } = require('../utils/permissions');
 
@@ -31,24 +32,20 @@ async function ensureDefaultStatuses(db, projectId) {
 
 async function getProjectMembers(db, projectId) {
     return db.all(`
-        SELECT u.id, u.name, u.email, 'owner' as role, NULL as created_at
-        FROM projects p
-        JOIN users u ON u.id = p.user_id
-        WHERE p.id = ?
-        UNION ALL
         SELECT u.id, u.name, u.email, pm.role, pm.created_at
         FROM project_members pm
         JOIN users u ON u.id = pm.user_id
         WHERE pm.project_id = ?
         UNION
-        SELECT u.id, u.name, u.email, tm.role, tm.created_at
+        SELECT u.id, u.name, u.email, 'owner' as role, p.archived_at as created_at
         FROM projects p
-        JOIN clients c ON c.id = p.client_id
-        JOIN team_members tm ON tm.team_id = COALESCE(p.team_id, c.team_id) AND tm.status = 'active'
-        JOIN users u ON u.id = tm.user_id
+        JOIN users u ON u.id = p.user_id
         WHERE p.id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = p.user_id
+          )
         ORDER BY 4 DESC, 2 ASC
-    `, [projectId, projectId, projectId]);
+    `, [projectId, projectId]);
 }
 
 async function ensureFinancialShares(db, projectId) {
@@ -67,10 +64,26 @@ async function ensureFinancialShares(db, projectId) {
 module.exports = {
     async create(req, res) {
         try {
-            const { client_id, title, description, base_value, payment_type, deadline } = req.body;
+            const {
+                client_id,
+                name,
+                title,
+                description,
+                base_value,
+                value,
+                payment_type,
+                deadline,
+                status,
+                scope = 'individual',
+                team_id,
+                member_ids = []
+            } = req.body;
             const db = await connectDb();
+            const projectTitle = title || name;
+            const projectValue = base_value !== undefined ? base_value : value;
+            const projectScope = scope === 'team' ? 'team' : 'individual';
 
-            if (!client_id || !isNonEmptyString(title, 160)) {
+            if (!client_id || !isNonEmptyString(projectTitle, 160)) {
                 return res.status(400).json({ error: 'Cliente e titulo sao obrigatorios.' });
             }
 
@@ -78,18 +91,47 @@ module.exports = {
                 return res.status(400).json({ error: 'Prazo invalido.' });
             }
 
-            if (base_value !== undefined && !isNonNegativeMoney(base_value)) {
+            if (projectValue !== undefined && !isNonNegativeMoney(projectValue)) {
                 return res.status(400).json({ error: 'Valor do projeto invalido.' });
             }
 
             const client = await db.get('SELECT id, user_id, team_id FROM clients WHERE id = ? AND archived = 0', [client_id]);
 
-            if (!client || (client.user_id !== req.userId && !client.team_id)) {
+            if (!client) {
                 return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
             }
 
-            if (client.team_id && !await canEditTeamResource(db, req.userId, client.team_id)) {
-                return res.status(403).json({ error: 'Sem permissao para criar projetos neste time.' });
+            const canUseClient = client.user_id === req.userId
+                || (client.team_id && await canViewTeamResource(db, req.userId, client.team_id));
+            if (!canUseClient) {
+                return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+            }
+
+            let projectTeamId = null;
+            const selectedMembers = Array.isArray(member_ids)
+                ? [...new Set(member_ids.map(Number).filter(id => Number.isInteger(id) && id > 0 && id !== req.userId))]
+                : [];
+
+            if (projectScope === 'team') {
+                projectTeamId = Number(team_id);
+                if (!projectTeamId) {
+                    return res.status(400).json({ error: 'Selecione o time do projeto.' });
+                }
+
+                if (!await canEditTeamResource(db, req.userId, projectTeamId)) {
+                    return res.status(403).json({ error: 'Sem permissao para criar projetos neste time.' });
+                }
+
+                for (const memberId of selectedMembers) {
+                    const membership = await db.get(
+                        "SELECT id FROM team_members WHERE team_id = ? AND user_id = ? AND status = 'active'",
+                        [projectTeamId, memberId]
+                    );
+
+                    if (!membership) {
+                        return res.status(400).json({ error: 'Todos os participantes precisam fazer parte do time selecionado.' });
+                    }
+                }
             }
 
             const user = await db.get('SELECT plan FROM users WHERE id = ?', [req.userId]);
@@ -101,11 +143,35 @@ module.exports = {
             }
 
             const result = await db.run(`
-                INSERT INTO projects (client_id, team_id, title, description, base_value, payment_type, deadline, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `, [client_id, client.team_id || null, title.trim(), description || null, toMoney(base_value), payment_type || null, deadline || null, req.userId]);
+                INSERT INTO projects (client_id, team_id, scope, title, description, status, base_value, payment_type, deadline, user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+                client_id,
+                projectTeamId,
+                projectScope,
+                projectTitle.trim(),
+                description || null,
+                status || 'pendente',
+                toMoney(projectValue),
+                payment_type || null,
+                deadline || null,
+                req.userId
+            ]);
 
             await ensureDefaultStatuses(db, result.lastID);
+            await db.run(`
+                INSERT OR IGNORE INTO project_members (project_id, user_id, role)
+                VALUES (?, ?, 'owner')
+            `, [result.lastID, req.userId]);
+
+            if (projectScope === 'team') {
+                for (const memberId of selectedMembers) {
+                    await db.run(`
+                        INSERT OR IGNORE INTO project_members (project_id, user_id, role)
+                        VALUES (?, ?, 'member')
+                    `, [result.lastID, memberId]);
+                }
+            }
 
             return res.status(201).json({ id: result.lastID, message: 'Projeto criado!' });
         } catch (error) {
@@ -119,25 +185,36 @@ module.exports = {
             const status = ['active', 'archived', 'all'].includes(req.query.status)
                 ? req.query.status
                 : 'active';
+            const scopeFilter = ['individual', 'team'].includes(req.query.scope) ? req.query.scope : null;
             const db = await connectDb();
+            const params = [req.userId, req.userId, req.userId, status, status, status];
+            let scopeSql = '';
+            if (scopeFilter) {
+                scopeSql = ' AND p.scope = ?';
+                params.push(scopeFilter);
+            }
+            params.push(req.userId);
+
             const projects = await db.all(`
                 SELECT 
                     p.*, 
                     clients.name as client_name,
+                    teams.name as team_name,
                     tm.role as team_role,
                     CASE 
                         WHEN p.user_id = ? THEN 'owner'
                         WHEN project_members.user_id IS NOT NULL THEN project_members.role
-                        WHEN tm.user_id IS NOT NULL THEN tm.role
+                        WHEN tm.role IN ('owner', 'admin', 'gestor') THEN tm.role
                         ELSE NULL
                     END as access_role
                 FROM projects p
                 JOIN clients ON p.client_id = clients.id
+                LEFT JOIN teams ON teams.id = p.team_id
                 LEFT JOIN project_members 
                     ON project_members.project_id = p.id 
                     AND project_members.user_id = ?
                 LEFT JOIN team_members tm
-                    ON tm.team_id = COALESCE(p.team_id, clients.team_id)
+                    ON tm.team_id = p.team_id
                     AND tm.user_id = ?
                     AND tm.status = 'active'
                 WHERE (
@@ -145,9 +222,14 @@ module.exports = {
                     OR (? = 'archived' AND p.archived = 1)
                     OR ? = 'all'
                 )
-                  AND (p.user_id = ? OR project_members.user_id IS NOT NULL OR tm.user_id IS NOT NULL)
+                  ${scopeSql}
+                  AND (
+                    p.user_id = ?
+                    OR project_members.user_id IS NOT NULL
+                    OR (p.scope = 'team' AND tm.role IN ('owner', 'admin', 'gestor'))
+                  )
                 ORDER BY p.archived ASC, p.id DESC
-            `, [req.userId, req.userId, req.userId, status, status, status, req.userId]);
+            `, params);
 
             return res.json(projects.map(project => {
                 const canSeeFinancials = ['owner', 'admin', 'gestor'].includes(project.access_role);
@@ -556,13 +638,8 @@ module.exports = {
                         FROM projects p
                         LEFT JOIN project_members pm 
                             ON pm.project_id = p.id AND pm.user_id = ?
-                        LEFT JOIN clients c ON c.id = p.client_id
-                        LEFT JOIN team_members tm
-                            ON tm.team_id = COALESCE(p.team_id, c.team_id)
-                            AND tm.user_id = ?
-                            AND tm.status = 'active'
-                        WHERE p.id = ? AND (p.user_id = ? OR pm.user_id IS NOT NULL OR tm.user_id IS NOT NULL)
-                    `, [userId, userId, id, userId]);
+                        WHERE p.id = ? AND (p.user_id = ? OR pm.user_id IS NOT NULL)
+                    `, [userId, id, userId]);
 
                     if (!member) {
                         return res.status(400).json({ error: 'Participante invalido para este projeto.' });

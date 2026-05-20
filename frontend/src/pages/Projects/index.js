@@ -11,22 +11,25 @@ export default function Projects() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState('active');
+  const [scopeFilter, setScopeFilter] = useState('all');
   const [feedback, setFeedback] = useState('');
 
-  const loadProjects = useCallback(async (status = statusFilter) => {
+  const loadProjects = useCallback(async (status = statusFilter, scope = scopeFilter) => {
     try {
-      const response = await api.get(`/projects?status=${status}`);
+      const params = new URLSearchParams({ status });
+      if (scope !== 'all') params.set('scope', scope);
+      const response = await api.get(`/projects?${params.toString()}`);
       setProjects(response.data);
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao carregar projetos.');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, scopeFilter]);
 
   useEffect(() => {
-    loadProjects(statusFilter);
-  }, [loadProjects, statusFilter]);
+    loadProjects(statusFilter, scopeFilter);
+  }, [loadProjects, statusFilter, scopeFilter]);
 
   const activeProjectsCount = projects.filter(project => project.archived !== 1).length;
   const isLimitReached = user?.plan === 'free' && activeProjectsCount >= 5;
@@ -101,6 +104,23 @@ export default function Projects() {
         ))}
       </div>
 
+      <div className="project-tabs scope-tabs">
+        {[
+          ['all', 'Todos'],
+          ['individual', 'Individuais'],
+          ['team', 'De equipe']
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={scopeFilter === value ? 'active' : ''}
+            onClick={() => setScopeFilter(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Alerta de consistência com a página de Clientes */}
       {isLimitReached && (
         <div className="upgrade-alert">
@@ -119,7 +139,8 @@ export default function Projects() {
                 <div className="project-main-info">
                   <h3>{project.title}</h3>
                   <span className="client-tag">{project.client_name}</span>
-                  {project.access_role !== 'owner' && <span className="shared-tag">Compartilhado</span>}
+                  <span className="scope-tag">{project.scope === 'team' ? `Time: ${project.team_name || 'Equipe'}` : 'Individual'}</span>
+                  {project.scope === 'team' && project.access_role !== 'owner' && <span className="shared-tag">Compartilhado</span>}
                   {project.archived === 1 && <span className="archived-tag">Arquivado</span>}
                 </div>
                 

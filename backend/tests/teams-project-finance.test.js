@@ -98,7 +98,7 @@ async function seedTeamProject(db) {
         [users.ownerId, teamId]
     );
     const project = await db.run(
-        "INSERT INTO projects (user_id, client_id, team_id, title, base_value, archived) VALUES (?, ?, ?, 'Site Institucional', 4500, 0)",
+        "INSERT INTO projects (user_id, client_id, team_id, scope, title, base_value, archived) VALUES (?, ?, ?, 'team', 'Site Institucional', 4500, 0)",
         [users.ownerId, client.lastID, teamId]
     );
 
@@ -165,7 +165,7 @@ test('project financial permissions hide global totals from member', async () =>
         assert.equal(await canViewProjectFinancials(db, seeded.gestorId, seeded.projectId), true);
         assert.equal(await canEditProjectFinancials(db, seeded.gestorId, seeded.projectId), true);
         assert.equal(await canViewProjectFinancials(db, seeded.memberId, seeded.projectId), false);
-        assert.equal(await canViewOwnFinancialShare(db, seeded.memberId, seeded.projectId), true);
+        assert.equal(await canViewOwnFinancialShare(db, seeded.memberId, seeded.projectId), false);
     } finally {
         await cleanup();
     }
@@ -288,7 +288,7 @@ test('project archive and restore are reversible and blocked for team member', a
             userId: seeded.memberId,
             params: { id: seeded.projectId }
         });
-        assert.equal(blocked.statusCode, 403);
+        assert.equal(blocked.statusCode, 404);
 
         const archived = await callController(ProjectController.archive, {
             userId: seeded.gestorId,
@@ -317,6 +317,138 @@ test('project archive and restore are reversible and blocked for team member', a
         project = await db.get('SELECT archived, archived_at FROM projects WHERE id = ?', [seeded.projectId]);
         assert.equal(project.archived, 0);
         assert.equal(project.archived_at, null);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('team client can be used for an individual project without leaking to team members', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const created = await callController(ProjectController.create, {
+            userId: seeded.memberId,
+            body: {
+                client_id: seeded.clientId,
+                title: 'Projeto privado do membro',
+                scope: 'individual',
+                team_id: seeded.teamId,
+                member_ids: [seeded.ownerId, seeded.adminId],
+                base_value: 900,
+                deadline: '2026-06-10'
+            }
+        });
+        assert.equal(created.statusCode, 201);
+
+        const project = await db.get('SELECT * FROM projects WHERE id = ?', [created.body.id]);
+        assert.equal(project.scope, 'individual');
+        assert.equal(project.team_id, null);
+        assert.equal(project.user_id, seeded.memberId);
+
+        const members = await db.all('SELECT user_id, role FROM project_members WHERE project_id = ? ORDER BY user_id', [created.body.id]);
+        assert.deepEqual(members, [{ user_id: seeded.memberId, role: 'owner' }]);
+
+        const ownerList = await callController(ProjectController.index, {
+            userId: seeded.ownerId,
+            query: { status: 'all' }
+        });
+        assert.equal(ownerList.body.some(item => item.id === created.body.id), false);
+
+        const memberList = await callController(ProjectController.index, {
+            userId: seeded.memberId,
+            query: { status: 'all', scope: 'individual' }
+        });
+        assert.equal(memberList.body.some(item => item.id === created.body.id), true);
+
+        const task = await callController(TaskController.create, {
+            userId: seeded.memberId,
+            body: {
+                project_id: created.body.id,
+                title: 'Tarefa privada',
+                due_date: '2026-06-11'
+            }
+        });
+        assert.equal(task.statusCode, 201);
+
+        const savedTask = await db.get('SELECT team_id FROM tasks WHERE id = ?', [task.body.id]);
+        assert.equal(savedTask.team_id, null);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('team project adds only selected project members and keeps unselected team member out', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const created = await callController(ProjectController.create, {
+            userId: seeded.ownerId,
+            body: {
+                client_id: seeded.clientId,
+                title: 'Projeto de equipe selecionado',
+                scope: 'team',
+                team_id: seeded.teamId,
+                member_ids: [seeded.adminId],
+                base_value: 3000,
+                deadline: '2026-07-01'
+            }
+        });
+        assert.equal(created.statusCode, 201);
+
+        const project = await db.get('SELECT * FROM projects WHERE id = ?', [created.body.id]);
+        assert.equal(project.scope, 'team');
+        assert.equal(project.team_id, seeded.teamId);
+
+        const members = await db.all('SELECT user_id, role FROM project_members WHERE project_id = ? ORDER BY user_id', [created.body.id]);
+        assert.deepEqual(members, [
+            { user_id: seeded.ownerId, role: 'owner' },
+            { user_id: seeded.adminId, role: 'member' }
+        ]);
+
+        const unselectedMemberList = await callController(ProjectController.index, {
+            userId: seeded.memberId,
+            query: { status: 'all' }
+        });
+        assert.equal(unselectedMemberList.body.some(item => item.id === created.body.id), false);
+
+        const unselectedShow = await callController(ProjectController.show, {
+            userId: seeded.memberId,
+            params: { id: created.body.id }
+        });
+        assert.equal(unselectedShow.statusCode, 404);
+
+        const unselectedFinance = await callController(ProjectController.finance, {
+            userId: seeded.memberId,
+            params: { id: created.body.id }
+        });
+        assert.equal(unselectedFinance.statusCode, 404);
+
+        const selectedList = await callController(ProjectController.index, {
+            userId: seeded.adminId,
+            query: { status: 'all', scope: 'team' }
+        });
+        assert.equal(selectedList.body.some(item => item.id === created.body.id), true);
+
+        const task = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: created.body.id,
+                title: 'Tarefa da equipe',
+                due_date: '2026-07-02'
+            }
+        });
+        assert.equal(task.statusCode, 201);
+
+        const savedTask = await db.get('SELECT team_id FROM tasks WHERE id = ?', [task.body.id]);
+        assert.equal(savedTask.team_id, seeded.teamId);
+
+        const unselectedTasks = await callController(TaskController.index, {
+            userId: seeded.memberId,
+            query: { project_id: created.body.id }
+        });
+        assert.equal(unselectedTasks.statusCode, 403);
     } finally {
         await cleanup();
     }

@@ -323,6 +323,10 @@ export default function ProjectDetails() {
         <div>
           <h1>{project.title}</h1>
           <p>Cliente: <strong>{project.client_name}</strong></p>
+          <p>
+            Tipo: <strong>{project.scope === 'team' ? 'Projeto de equipe' : 'Projeto individual'}</strong>
+            {project.team_name ? <> - Time: <strong>{project.team_name}</strong></> : null}
+          </p>
         </div>
         <div className="project-badge">{project.status}</div>
       </header>

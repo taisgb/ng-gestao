@@ -39,9 +39,10 @@ async function canViewTeamResource(db, userId, teamId) {
 
 async function getProjectAccess(db, userId, projectId) {
     const project = await db.get(`
-        SELECT p.*, c.name as client_name, c.team_id as client_team_id
+        SELECT p.*, c.name as client_name, c.team_id as client_team_id, t.name as team_name
         FROM projects p
         JOIN clients c ON c.id = p.client_id
+        LEFT JOIN teams t ON t.id = p.team_id
         WHERE p.id = ?
     `, [projectId]);
 
@@ -60,11 +61,10 @@ async function getProjectAccess(db, userId, projectId) {
         return { ...project, access_role: directMember.role || 'member', team_role: null };
     }
 
-    const teamId = project.team_id || project.client_team_id;
-    if (teamId) {
-        const teamRole = await getTeamRole(db, userId, teamId);
-        if (teamRole) {
-            return { ...project, team_id: teamId, access_role: teamRole, team_role: teamRole };
+    if (project.scope === 'team' && project.team_id) {
+        const teamRole = await getTeamRole(db, userId, project.team_id);
+        if (FINANCIAL_ROLES.includes(teamRole)) {
+            return { ...project, access_role: teamRole, team_role: teamRole };
         }
     }
 

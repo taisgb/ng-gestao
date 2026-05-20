@@ -8,17 +8,23 @@ async function canAccessProject(db, projectId, userId) {
 
 async function canAccessTask(db, taskId, userId, requireEdit = false) {
     const task = await db.get(`
-        SELECT t.*, p.team_id as project_team_id, c.team_id as client_team_id
+        SELECT t.*, p.team_id as project_team_id, p.scope as project_scope
         FROM tasks t
         LEFT JOIN projects p ON p.id = t.project_id
-        LEFT JOIN clients c ON c.id = p.client_id
         WHERE t.id = ?
     `, [taskId]);
 
     if (!task) return null;
     if (task.user_id === userId) return task;
 
-    const teamId = task.team_id || task.project_team_id || task.client_team_id;
+    if (task.project_id) {
+        const projectAccess = await getProjectAccess(db, userId, task.project_id);
+        if (!projectAccess) return null;
+        if (requireEdit && !['owner', 'admin', 'gestor'].includes(projectAccess.access_role)) return null;
+        return task;
+    }
+
+    const teamId = task.team_id || (task.project_scope === 'team' ? task.project_team_id : null);
     if (!teamId) return null;
     const role = await getTeamRole(db, userId, teamId);
     if (!role) return null;
@@ -51,15 +57,20 @@ module.exports = {
                 SELECT t.*, p.title as project_title, teams.name as team_name
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
-                LEFT JOIN clients c ON c.id = p.client_id
-                LEFT JOIN teams ON teams.id = COALESCE(t.team_id, p.team_id, c.team_id)
+                LEFT JOIN teams ON teams.id = COALESCE(t.team_id, p.team_id)
                 LEFT JOIN team_members tm
-                    ON tm.team_id = COALESCE(t.team_id, p.team_id, c.team_id)
+                    ON tm.team_id = COALESCE(t.team_id, p.team_id)
                     AND tm.user_id = ?
                     AND tm.status = 'active'
-                WHERE t.user_id = ? OR tm.user_id IS NOT NULL
+                LEFT JOIN project_members pm
+                    ON pm.project_id = t.project_id
+                    AND pm.user_id = ?
+                WHERE t.user_id = ?
+                   OR (t.project_id IS NULL AND tm.user_id IS NOT NULL)
+                   OR pm.user_id IS NOT NULL
+                   OR (p.scope = 'team' AND tm.role IN ('owner', 'admin', 'gestor'))
                 ORDER BY t.due_date ASC, t.id ASC
-            `, [req.userId, req.userId]);
+            `, [req.userId, req.userId, req.userId]);
 
             return res.json(tasks);
         } catch (error) {
@@ -85,7 +96,7 @@ module.exports = {
                 if (!projectCheck) {
                     return res.status(403).json({ error: 'Voce nao tem permissao para vincular tarefas a este projeto.' });
                 }
-                taskTeamId = projectCheck.team_id || projectCheck.client_team_id || taskTeamId;
+                taskTeamId = projectCheck.scope === 'team' ? (projectCheck.team_id || taskTeamId) : null;
             }
 
             if (taskTeamId && !await canEditTeamResource(db, userId, taskTeamId)) {
@@ -115,13 +126,21 @@ module.exports = {
                 LEFT JOIN projects p ON t.project_id = p.id
                 LEFT JOIN clients c ON p.client_id = c.id
                 LEFT JOIN team_members tm
-                    ON tm.team_id = COALESCE(t.team_id, p.team_id, c.team_id)
+                    ON tm.team_id = COALESCE(t.team_id, p.team_id)
                     AND tm.user_id = ?
                     AND tm.status = 'active'
-                WHERE (t.user_id = ? OR tm.user_id IS NOT NULL)
+                LEFT JOIN project_members pm
+                    ON pm.project_id = t.project_id
+                    AND pm.user_id = ?
+                WHERE (
+                    t.user_id = ?
+                    OR (t.project_id IS NULL AND tm.user_id IS NOT NULL)
+                    OR pm.user_id IS NOT NULL
+                    OR (p.scope = 'team' AND tm.role IN ('owner', 'admin', 'gestor'))
+                )
                   AND (t.due_date = ? OR (t.due_date < ? AND t.status NOT IN ('concluido', 'concluído')))
                 ORDER BY t.due_date ASC, t.id ASC
-            `, [req.userId, req.userId, today, today]);
+            `, [req.userId, req.userId, req.userId, today, today]);
 
             return res.json(tasks);
         } catch (error) {
