@@ -4,9 +4,15 @@
   --surface: #ffffff;
   --surface-2: #f9f7f2;
   --surface-muted: #f0ede7;
+  --card-bg: #ffffff;
+  --input-bg: #ffffff;
   --border: #e6ded3;
+  --border-color: #e6ded3;
   --text: #332f2b;
+  --text-primary: #332f2b;
   --text-muted: #7b746d;
+  --text-secondary: #7b746d;
+  --text-dark: #1f2933;
   --primary: #60715a;
   --primary-strong: #4d6048;
   --accent: #b98352;
@@ -15,6 +21,16 @@
   --success: #5f7f56;
   --warning-bg: #fff4e6;
   --success-bg: #eef7ed;
+  --button-primary-bg: linear-gradient(135deg, #6f805f 0%, #536a4c 100%);
+  --button-primary-hover: linear-gradient(135deg, #7d916b 0%, #60785a 100%);
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #ffffff;
+  --button-secondary-hover: #f4f1ea;
+  --button-secondary-text: #34516f;
+  --button-danger-bg: #fff1f1;
+  --button-danger-text: #b42323;
+  --button-restore-bg: #eef7ed;
+  --button-restore-text: #4d7444;
   --shadow-sm: 0 1px 2px rgba(38, 33, 28, 0.06);
   --shadow-md: 0 14px 32px rgba(38, 33, 28, 0.08);
   --radius: 10px;
@@ -23,22 +39,38 @@
 }
 
 body[data-theme='dark'] {
-  --bg: #111312;
-  --bg-soft: #151817;
-  --surface: #1b201e;
-  --surface-2: #222824;
-  --surface-muted: #29302b;
-  --border: #343d37;
-  --text: #f0eee8;
-  --text-muted: #b9b2a8;
-  --primary: #8ba681;
-  --primary-strong: #a5bd99;
-  --accent: #d5a46f;
-  --info: #92b7de;
-  --danger: #ee8f8f;
-  --success: #97c18b;
-  --warning-bg: #332818;
-  --success-bg: #1d2b20;
+  --bg: #111814;
+  --bg-soft: #141c17;
+  --surface: #18211c;
+  --surface-2: #1d2822;
+  --surface-muted: #243129;
+  --card-bg: #18211c;
+  --input-bg: #162019;
+  --border: rgba(255, 255, 255, 0.10);
+  --border-color: rgba(255, 255, 255, 0.10);
+  --text: #f4f1ea;
+  --text-primary: #f4f1ea;
+  --text-muted: #c8c1b7;
+  --text-secondary: #c8c1b7;
+  --text-dark: #1f2933;
+  --primary: #9fbe93;
+  --primary-strong: #b7d8aa;
+  --accent: #f0bd7d;
+  --info: #9cc7ef;
+  --danger: #ff9d9d;
+  --success: #a8d99b;
+  --warning-bg: #3a2c18;
+  --success-bg: #1f3324;
+  --button-primary-bg: linear-gradient(135deg, #9fbe93 0%, #77a46d 100%);
+  --button-primary-hover: linear-gradient(135deg, #b4d6a7 0%, #8bbd80 100%);
+  --button-primary-text: #102014;
+  --button-secondary-bg: #1d2822;
+  --button-secondary-hover: rgba(255, 255, 255, 0.06);
+  --button-secondary-text: #f4f1ea;
+  --button-danger-bg: rgba(255, 157, 157, 0.12);
+  --button-danger-text: #ff9d9d;
+  --button-restore-bg: rgba(168, 217, 155, 0.14);
+  --button-restore-text: #a8d99b;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-md: 0 18px 44px rgba(0, 0, 0, 0.34);
   color-scheme: dark;
@@ -309,5 +341,715 @@ body[data-theme='dark'] {
     background: var(--success-bg) !important;
     border-color: rgba(151, 193, 139, 0.45) !important;
     color: var(--success) !important;
+  }
+}
+
+button,
+a.btn-add,
+a.btn-save,
+a.btn-manage,
+a.btn-complete,
+a.btn-edit-profile,
+.doc-actions a,
+.documents-mini-list a {
+  align-items: center;
+  border-radius: 9px;
+  display: inline-flex;
+  font-weight: 760;
+  gap: 7px;
+  justify-content: center;
+  letter-spacing: 0;
+  min-height: 36px;
+  text-decoration: none;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.18s ease;
+  user-select: none;
+}
+
+button:not(:disabled):hover,
+a.btn-add:hover,
+a.btn-save:hover,
+a.btn-manage:hover,
+a.btn-complete:hover,
+a.btn-edit-profile:hover,
+.doc-actions a:hover,
+.documents-mini-list a:hover {
+  transform: translateY(-1px);
+}
+
+button:active,
+a.btn-add:active,
+a.btn-save:active,
+a.btn-manage:active,
+a.btn-complete:active,
+a.btn-edit-profile:active,
+.doc-actions a:active,
+.documents-mini-list a:active {
+  transform: translateY(0);
+}
+
+button:disabled,
+button.disabled,
+.btn-add.disabled,
+.btn-save.disabled,
+.btn-manage.disabled,
+.btn-complete.disabled,
+.btn-edit-profile.disabled {
+  filter: grayscale(0.24);
+  opacity: 0.56 !important;
+}
+
+button[type='submit'],
+.btn-add,
+.btn-save,
+.btn-manage,
+.btn-complete,
+.btn-edit-profile,
+.page-header > button,
+.modal-actions button[type='submit'],
+.note-form button,
+.split-form button,
+.admin-panel form button,
+.invoice-form-panel form button,
+.invoice-documents-panel form button,
+.service-form form button:not(.btn-cancel),
+.task-form-panel form button,
+.task-form-section form button,
+.upgrade-container button:not(:disabled),
+.doc-actions a,
+.documents-mini-list a {
+  background: var(--button-primary-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--primary) 72%, transparent) !important;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #ffffff 22%, transparent) inset,
+    0 10px 22px color-mix(in srgb, var(--primary) 18%, transparent) !important;
+  color: var(--button-primary-text) !important;
+  padding: 9px 14px !important;
+}
+
+button[type='submit']:not(:disabled):hover,
+.btn-add:not(:disabled):hover,
+.btn-save:not(:disabled):hover,
+.btn-manage:hover,
+.btn-complete:not(:disabled):hover,
+.btn-edit-profile:not(:disabled):hover,
+.page-header > button:not(:disabled):hover,
+.modal-actions button[type='submit']:not(:disabled):hover,
+.note-form button:not(:disabled):hover,
+.split-form button:not(:disabled):hover,
+.admin-panel form button:not(:disabled):hover,
+.invoice-form-panel form button:not(:disabled):hover,
+.invoice-documents-panel form button:not(:disabled):hover,
+.service-form form button:not(.btn-cancel):not(:disabled):hover,
+.task-form-panel form button:not(:disabled):hover,
+.task-form-section form button:not(:disabled):hover,
+.upgrade-container button:not(:disabled):hover,
+.doc-actions a:hover,
+.documents-mini-list a:hover {
+  background: var(--button-primary-hover) !important;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #ffffff 26%, transparent) inset,
+    0 14px 28px color-mix(in srgb, var(--primary) 24%, transparent) !important;
+}
+
+button:not([type='submit']):not(.btn-add):not(.btn-save):not(.btn-manage):not(.btn-complete):not(.btn-edit-profile):not(.danger):not(.team-danger):not(.remove-member):not(.restore):not(.team-restore):not(.btn-close):not(.team-select),
+.btn-cancel,
+.secondary,
+button.secondary,
+.task-actions button,
+.entries-table button,
+.card-actions button,
+.doc-actions button,
+.service-meta button,
+.documents-mini-list button,
+.member-actions button,
+.invoice-documents-panel header > button,
+.filter-row button,
+.btn-details {
+  background: var(--button-secondary-bg) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 1px 0 color-mix(in srgb, #ffffff 16%, transparent) inset !important;
+  color: var(--button-secondary-text) !important;
+  padding: 8px 12px !important;
+}
+
+button:not([type='submit']):not(.btn-add):not(.btn-save):not(.btn-manage):not(.btn-complete):not(.btn-edit-profile):not(.danger):not(.team-danger):not(.remove-member):not(.restore):not(.team-restore):not(.btn-close):not(.team-select):not(:disabled):hover,
+.btn-cancel:not(:disabled):hover,
+.secondary:not(:disabled):hover,
+button.secondary:not(:disabled):hover,
+.task-actions button:not(:disabled):hover,
+.entries-table button:not(:disabled):hover,
+.card-actions button:not(:disabled):hover,
+.doc-actions button:not(:disabled):hover,
+.service-meta button:not(:disabled):hover,
+.documents-mini-list button:not(:disabled):hover,
+.member-actions button:not(:disabled):hover,
+.invoice-documents-panel header > button:not(:disabled):hover,
+.filter-row button:not(:disabled):hover,
+.btn-details:not(:disabled):hover {
+  background: var(--button-secondary-hover) !important;
+  border-color: color-mix(in srgb, var(--primary) 52%, var(--border)) !important;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #ffffff 18%, transparent) inset,
+    0 10px 22px rgba(0, 0, 0, 0.08) !important;
+}
+
+button.danger,
+.danger,
+.team-danger,
+.remove-member,
+.btn-archive,
+.doc-actions button.danger,
+.service-meta button.danger,
+.card-actions button.danger,
+.task-actions button.danger {
+  background: var(--button-danger-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--border)) !important;
+  box-shadow: none !important;
+  color: var(--button-danger-text) !important;
+}
+
+button.danger:not(:disabled):hover,
+.danger:not(:disabled):hover,
+.team-danger:not(:disabled):hover,
+.remove-member:not(:disabled):hover,
+.btn-archive:not(:disabled):hover,
+.doc-actions button.danger:not(:disabled):hover,
+.service-meta button.danger:not(:disabled):hover,
+.card-actions button.danger:not(:disabled):hover,
+.task-actions button.danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--button-danger-bg) 82%, var(--danger)) !important;
+  border-color: color-mix(in srgb, var(--danger) 68%, var(--border)) !important;
+}
+
+button.restore,
+.restore,
+.team-restore,
+.btn-restore,
+.doc-actions button.restore,
+.service-meta button.restore {
+  background: var(--button-restore-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--success) 42%, var(--border)) !important;
+  color: var(--button-restore-text) !important;
+}
+
+button.restore:not(:disabled):hover,
+.restore:not(:disabled):hover,
+.team-restore:not(:disabled):hover,
+.btn-restore:not(:disabled):hover,
+.doc-actions button.restore:not(:disabled):hover,
+.service-meta button.restore:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--success) 68%, var(--border)) !important;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--success) 16%, transparent) !important;
+}
+
+.entry-tabs button,
+.task-tabs button,
+.team-tabs button,
+.service-tabs button,
+.status-tabs button,
+.scope-tabs button,
+.project-tabs button,
+.filter-tabs button,
+.status-options button,
+.project-filters button {
+  border-radius: 999px !important;
+  min-height: 36px;
+  padding: 0 13px !important;
+}
+
+.entry-tabs button.active,
+.task-tabs button.active,
+.team-tabs button.active,
+.service-tabs button.active,
+.status-tabs button.active,
+.scope-tabs button.active,
+.project-tabs button.active,
+.filter-tabs button.active,
+.status-options button.active,
+.project-filters button.active {
+  background: var(--button-primary-bg) !important;
+  border-color: color-mix(in srgb, var(--primary) 76%, transparent) !important;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--primary) 18%, transparent) !important;
+  color: var(--button-primary-text) !important;
+}
+
+.sidebar-footer button,
+.btn-close,
+.team-select {
+  min-height: initial;
+  transform: none !important;
+}
+
+.sidebar-footer button:hover,
+.btn-close:hover,
+.team-select:hover {
+  transform: none !important;
+}
+
+body[data-theme='dark'] {
+  background:
+    radial-gradient(circle at top right, rgba(159, 190, 147, 0.11), transparent 34rem),
+    var(--bg) !important;
+  color: var(--text) !important;
+
+  #root,
+  .default-layout,
+  main,
+  section,
+  article,
+  aside {
+    color: var(--text);
+  }
+
+  .dashboard-container,
+  .tasks-container,
+  .projects-container,
+  .project-details-container,
+  .clients-container,
+  .finance-container,
+  .personal-finance-container,
+  .documents-container,
+  .invoices-container,
+  .teams-container,
+  .services-container,
+  .agenda-container,
+  .profile-container,
+  .admin-container,
+  .upgrade-container,
+  .not-found-container {
+    color: var(--text) !important;
+  }
+
+  .page-header,
+  .dashboard-header,
+  .details-header,
+  .dashboard-task-summary article,
+  .task-list li,
+  .client-card,
+  .client-profile,
+  .client-projects-panel,
+  .client-project-card,
+  .project-card,
+  .task-card,
+  .task-row,
+  .task-form-panel,
+  .task-form-section,
+  .task-list-panel,
+  .task-filters,
+  .task-summary > div,
+  .calendar-panel,
+  .service-card,
+  .service-form,
+  .service-tabs button,
+  .services-toolbar,
+  .services-list article,
+  .client-documents-section,
+  .documents-summary > div,
+  .document-card,
+  .document-form-panel,
+  .documents-filters,
+  .documents-filter-panel,
+  .documents-list article,
+  .invoice-card,
+  .invoice-form-panel,
+  .invoice-summary > div,
+  .fiscal-card,
+  .fiscal-settings-card,
+  .filter-row,
+  .invoice-documents-panel,
+  .limit-card,
+  .team-form-panel,
+  .team-list,
+  .team-details,
+  .team-list-item,
+  .member-row,
+  .finance-card,
+  .finance-panel,
+  .summary-cards .card,
+  .summary-card,
+  .summary-item,
+  .stat-card,
+  .kpi-card,
+  .panel,
+  .panel-section,
+  .section-block,
+  .details-section,
+  .project-summary > div,
+  .finance-split-section,
+  .project-financial-entries,
+  .project-documents-section,
+  .entry-summary-grid > div,
+  .entry-form,
+  .document-inline-form,
+  .entries-table,
+  .documents-mini-list article,
+  .notes-section,
+  .note-item,
+  .personal-summary > div,
+  .personal-form-panel,
+  .filters-panel,
+  .transactions-panel,
+  .transactions-table,
+  .transaction-table article,
+  .renegotiations-panel,
+  .renegotiations-list article,
+  .admin-panel,
+  .admin-row,
+  .profile-header,
+  .stats-row .stat-card,
+  .list-item,
+  .receipt-item,
+  .edit-panel,
+  .modal-content,
+  .login-card,
+  .plan-card {
+    background: var(--surface) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+  }
+
+  .surface-muted,
+  .entry-tabs button,
+  .task-tabs button,
+  .team-tabs button,
+  .service-tabs button,
+  .status-tabs button,
+  .scope-tabs button,
+  .project-tabs button,
+  .filter-tabs button,
+  .status-options button,
+  .project-filters button,
+  .agenda-filters,
+  .toolbar,
+  .entries-header,
+  .table-head,
+  thead,
+  th,
+  .private-summary span,
+  .task-badges span,
+  .task-tags span,
+  .role-badge,
+  .status-badge,
+  .project-badge,
+  .client-tag,
+  .shared-tag,
+  .scope-tag,
+  .scope-badge,
+  .team-tag,
+  .plan-tag,
+  .badge,
+  .badge-pro,
+  .type-pill,
+  .status-pill,
+  .archive-badge,
+  .archived-badge,
+  .archived-tag,
+  .doc-badges small,
+  .service-badges small,
+  .client-initials,
+  .empty-state,
+  .blocked-panel,
+  .upgrade-alert {
+    background: var(--surface-2) !important;
+    border-color: var(--border) !important;
+    color: var(--text) !important;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  strong,
+  b,
+  label,
+  legend,
+  td,
+  .value,
+  .amount,
+  .total,
+  .currency,
+  .finance-value,
+  .kpi-value,
+  .summary-value,
+  .card-title,
+  .project-title,
+  .client-name,
+  .documents-summary strong,
+  .invoice-summary strong,
+  .dashboard-task-summary strong,
+  .summary-cards strong,
+  .personal-summary strong,
+  .team-select strong,
+  .team-title h2,
+  .task-main strong,
+  .task-info strong,
+  .documents-list strong,
+  .invoice-card strong,
+  .service-card strong,
+  .renegotiations-list strong {
+    color: var(--text) !important;
+  }
+
+  p,
+  small,
+  span,
+  th,
+  .muted,
+  .date,
+  .meta,
+  .description,
+  .subtitle,
+  .empty,
+  .empty-msg,
+  .empty-text,
+  .empty-state,
+  .loading-text,
+  .loading-msg,
+  .summary-item span,
+  .summary-card span,
+  .summary-cards span,
+  .dashboard-task-summary span,
+  .documents-summary span,
+  .invoice-summary span,
+  .entry-summary-grid span,
+  .task-meta span,
+  .task-info span,
+  .member-row span,
+  .team-select span,
+  .service-meta span,
+  .documents-list p,
+  .invoice-card p,
+  .invoice-card span,
+  .service-card p,
+  .receipt-info span,
+  .meta-item span,
+  .user-info p {
+    color: var(--text-muted) !important;
+  }
+
+  input,
+  select,
+  textarea {
+    background: var(--input-bg) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    caret-color: var(--text) !important;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #9c948a !important;
+    opacity: 1 !important;
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus,
+  button:focus-visible,
+  a:focus-visible {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(159, 190, 147, 0.22) !important;
+    outline: none !important;
+  }
+
+  table,
+  tr,
+  th,
+  td,
+  .entries-table article,
+  .member-row,
+  .task-row,
+  .finance-item,
+  .share-row,
+  .document-card,
+  .invoice-card {
+    border-color: var(--border) !important;
+  }
+
+  button:not([class*='danger']):not(.team-danger):not(.remove-member),
+  .btn-add,
+  .btn-save,
+  .btn-manage,
+  .btn-complete,
+  .btn-edit-profile {
+    color: inherit;
+  }
+
+  .btn-add,
+  .btn-save,
+  .btn-manage,
+  .btn-complete,
+  .doc-actions a,
+  .page-header > button,
+  .modal-actions button[type='submit'],
+  .note-form button,
+  .split-form button,
+  .admin-panel form button,
+  .invoice-form-panel form button,
+  .service-form form button,
+  .task-form-panel form button,
+  .task-form-section form button,
+  .upgrade-container button {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #102014 !important;
+  }
+
+  .entry-tabs button.active,
+  .task-tabs button.active,
+  .team-tabs button.active,
+  .service-tabs button.active,
+  .status-tabs button.active,
+  .scope-tabs button.active,
+  .project-tabs button.active,
+  .filter-tabs button.active,
+  .status-options button.active,
+  .project-filters button.active {
+    background: var(--primary) !important;
+    border-color: var(--primary) !important;
+    color: #102014 !important;
+  }
+
+  .entry-tabs button.active span,
+  .task-tabs button.active span,
+  .team-tabs button.active span,
+  .service-tabs button.active span,
+  .status-tabs button.active span,
+  .scope-tabs button.active span,
+  .project-tabs button.active span,
+  .filter-tabs button.active span {
+    background: rgba(16, 32, 20, 0.16) !important;
+    color: #102014 !important;
+  }
+
+  button.secondary,
+  .secondary,
+  .team-restore,
+  .task-actions button,
+  .card-actions button,
+  .doc-actions button,
+  .service-meta button,
+  .btn-details,
+  .btn-cancel,
+  .filter-row select,
+  .entries-table button,
+  .documents-mini-list a,
+  .documents-mini-list button,
+  .member-actions button,
+  .team-list .team-danger,
+  .team-list .team-restore {
+    background: var(--surface-2) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+  }
+
+  .danger,
+  .team-danger,
+  .remove-member,
+  .member-actions button:last-child,
+  .doc-actions button.danger,
+  .service-meta button.danger,
+  .card-actions button.danger {
+    color: var(--danger) !important;
+  }
+
+  .income,
+  .receita,
+  .positive,
+  .success,
+  .finance-item.receita strong,
+  .type-pill.income,
+  .type-pill.scope_increase,
+  .type-pill.scope_adjustment,
+  .type-pill.received_payment,
+  .type-pill.reimbursement,
+  .status-pill.paid,
+  .status-pill.reimbursed,
+  .doc-actions button.restore,
+  .service-meta button.restore,
+  .status.paid,
+  .amount-cell.receita,
+  tr.receita .amount-cell {
+    color: var(--success) !important;
+  }
+
+  .expense,
+  .despesa,
+  .negative,
+  .danger,
+  .finance-item.despesa strong,
+  .type-pill.expense,
+  .type-pill.operational_cost,
+  .type-pill.transfer,
+  .status-pill.canceled,
+  .status.overdue,
+  .status.canceled,
+  tr.despesa .amount-cell {
+    color: var(--danger) !important;
+  }
+
+  .pending,
+  .warning,
+  .overdue,
+  .status-pill.pending,
+  .task-row.overdue,
+  .task-badges .danger {
+    color: var(--accent) !important;
+  }
+
+  .limit-progress,
+  .progress-track {
+    background: #243129 !important;
+  }
+
+  .limit-progress div,
+  .progress-fill {
+    background: var(--primary) !important;
+  }
+
+  .client-initials {
+    color: var(--primary) !important;
+  }
+
+  .type-pill,
+  .status-pill,
+  .role-badge,
+  .project-badge,
+  .status-badge,
+  .client-tag,
+  .shared-tag,
+  .badge,
+  .archive-badge,
+  .task-badges span {
+    border: 1px solid var(--border) !important;
+    font-weight: 800;
+  }
+
+  .feedback-message {
+    background: var(--success-bg) !important;
+    border-color: rgba(168, 217, 155, 0.42) !important;
+    color: var(--success) !important;
+  }
+
+  .error,
+  .error-message {
+    background: rgba(255, 157, 157, 0.12) !important;
+    border-color: rgba(255, 157, 157, 0.34) !important;
+    color: var(--danger) !important;
+  }
+
+  [style*='background: #fff'],
+  [style*='background-color: #fff'],
+  [style*='background: white'],
+  [style*='background-color: white'] {
+    color: var(--text-dark) !important;
   }
 }

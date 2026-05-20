@@ -99,10 +99,14 @@ export default function Tasks() {
 
   async function patchTask(task, payload, message = 'Tarefa atualizada.') {
     try {
-      if (Object.keys(payload).length === 1 && payload.status !== undefined) {
-        await api.patch(`/tasks/${task.id}/status`, payload);
+      const normalizedPayload = { ...payload };
+      if (normalizedPayload.status === 'pendente') normalizedPayload.status = 'pending';
+      if (String(normalizedPayload.status || '').toLowerCase().startsWith('conclu')) normalizedPayload.status = 'done';
+
+      if (Object.keys(normalizedPayload).length === 1 && normalizedPayload.status !== undefined) {
+        await api.patch(`/tasks/${task.id}/status`, normalizedPayload);
       } else {
-        await api.put(`/tasks/${task.id}`, payload);
+        await api.put(`/tasks/${task.id}`, normalizedPayload);
       }
       await loadData();
       setFeedback(message);

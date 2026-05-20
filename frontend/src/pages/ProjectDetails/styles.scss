@@ -1068,3 +1068,195 @@ $line: #ece7df;
     }
   }
 }
+
+body[data-theme='dark'] {
+  .project-details-container {
+    color: #f4f1ea;
+
+    .details-header,
+    .project-summary .summary-item,
+    .finance-split-section,
+    .project-financial-entries,
+    .project-documents-section,
+    .collaboration-panel .panel-section,
+    .details-section,
+    .notes-section {
+      background: #18211c !important;
+      border-color: rgba(255, 255, 255, 0.10) !important;
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.26) !important;
+      color: #f4f1ea !important;
+    }
+
+    .entry-summary-grid > div,
+    .private-summary span,
+    .documents-mini-list article,
+    .note-item,
+    .share-row,
+    .entries-table,
+    .entries-table article {
+      background: #1d2822 !important;
+      border-color: rgba(255, 255, 255, 0.10) !important;
+      color: #f4f1ea !important;
+    }
+
+    .entry-summary-grid > div {
+      min-height: 86px;
+      padding: 14px;
+
+      span {
+        color: #c8c1b7 !important;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      strong {
+        color: #f4f1ea !important;
+        font-size: 1.08rem;
+        font-weight: 820;
+      }
+    }
+
+    .entry-summary-grid > div:nth-child(2) strong,
+    .entry-summary-grid > div:nth-child(4) strong,
+    .entry-summary-grid > div:nth-child(8) strong,
+    .income,
+    .finance-item.receita strong {
+      color: #a8d99b !important;
+    }
+
+    .entry-summary-grid > div:nth-child(5) strong,
+    .pending {
+      color: #f0bd7d !important;
+    }
+
+    .entry-summary-grid > div:nth-child(6) strong,
+    .expense,
+    .finance-item.despesa strong {
+      color: #ff9d9d !important;
+    }
+
+    h1,
+    h2,
+    h3,
+    strong,
+    label,
+    td {
+      color: #f4f1ea !important;
+    }
+
+    p,
+    span,
+    small,
+    th,
+    .empty,
+    .muted {
+      color: #c8c1b7 !important;
+    }
+
+    input,
+    select,
+    textarea {
+      background: #162019 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      color: #f4f1ea !important;
+      box-shadow: none !important;
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #9c948a !important;
+      opacity: 1 !important;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: #9fbe93 !important;
+      box-shadow: 0 0 0 3px rgba(159, 190, 147, 0.22) !important;
+      outline: none !important;
+    }
+
+    .entry-form,
+    .document-inline-form {
+      background: #1d2822 !important;
+      border-color: rgba(255, 255, 255, 0.10) !important;
+
+      label {
+        background: #18211c !important;
+        border-color: rgba(255, 255, 255, 0.10) !important;
+        color: #c8c1b7 !important;
+      }
+    }
+
+    .entry-tabs button,
+    .status-options button,
+    .entries-table button,
+    .documents-mini-list a,
+    .documents-mini-list button,
+    .member-actions button {
+      background: #1d2822 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      color: #f4f1ea !important;
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.06) !important;
+      }
+    }
+
+    .entry-tabs button.active,
+    .status-options button.active {
+      background: #9fbe93 !important;
+      border-color: #9fbe93 !important;
+      color: #102014 !important;
+
+      span {
+        background: rgba(16, 32, 20, 0.14) !important;
+        color: #102014 !important;
+      }
+    }
+
+    .entry-tabs button span {
+      background: #243129 !important;
+      color: #f4f1ea !important;
+      font-weight: 850;
+    }
+
+    .entries-header {
+      background: #243129 !important;
+      color: #c8c1b7 !important;
+    }
+
+    .type-pill,
+    .status-pill,
+    .role-badge,
+    .project-badge {
+      background: #243129 !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      color: #f4f1ea !important;
+    }
+
+    .type-pill.income,
+    .type-pill.scope_increase,
+    .type-pill.scope_adjustment,
+    .type-pill.received_payment,
+    .type-pill.reimbursement,
+    .status-pill.paid,
+    .status-pill.reimbursed {
+      color: #a8d99b !important;
+    }
+
+    .type-pill.expense,
+    .type-pill.operational_cost,
+    .type-pill.transfer,
+    .status-pill.canceled {
+      color: #ff9d9d !important;
+    }
+
+    .feedback-message {
+      background: #1f3324 !important;
+      border-color: rgba(168, 217, 155, 0.34) !important;
+      color: #a8d99b !important;
+    }
+  }
+}
