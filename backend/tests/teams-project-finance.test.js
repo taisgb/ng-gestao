@@ -11,8 +11,11 @@ const ProjectController = require('../src/controllers/ProjectController');
 const ProjectFinancialController = require('../src/controllers/ProjectFinancialController');
 const PersonalTransactionController = require('../src/controllers/PersonalTransactionController');
 const ServiceController = require('../src/controllers/ServiceController');
+const SessionController = require('../src/controllers/SessionController');
 const TaskController = require('../src/controllers/TaskController');
 const DocumentController = require('../src/controllers/DocumentController');
+const UserController = require('../src/controllers/UserController');
+const authMiddleware = require('../src/middlewares/auth');
 const {
     canEditProjectFinancials,
     canEditTeamResource,
@@ -122,6 +125,16 @@ async function callController(handler, { userId, params = {}, query = {}, body =
     const res = mockResponse();
     await handler(req, res);
     return res;
+}
+
+async function callAuthMiddleware(token) {
+    const req = { headers: { authorization: token ? `Bearer ${token}` : undefined } };
+    const res = mockResponse();
+    let nextCalled = false;
+    await authMiddleware(req, res, () => {
+        nextCalled = true;
+    });
+    return { req, res, nextCalled };
 }
 
 test('team role helpers enforce management and editing rules', async () => {
@@ -654,6 +667,103 @@ test('documents support individual privacy, team permissions, links and reversib
         assert.equal(projectDocs.statusCode, 200);
         assert.equal(projectDocs.body.some(document => document.id === projectDoc.body.id), true);
     } finally {
+        await cleanup();
+    }
+});
+
+test('super admin bootstrap creates account, refreshes password and login token opens profile', async () => {
+    const previousEmail = process.env.SUPER_ADMIN_EMAIL;
+    const previousPassword = process.env.SUPER_ADMIN_PASSWORD;
+    const previousJwtSecret = process.env.JWT_SECRET;
+    const previousAppSecret = process.env.APP_SECRET;
+
+    process.env.SUPER_ADMIN_EMAIL = 'boss@test.local';
+    process.env.SUPER_ADMIN_PASSWORD = 'PrimeiraSenha123';
+    process.env.JWT_SECRET = 'jwt-test-secret';
+    delete process.env.APP_SECRET;
+
+    const { db, cleanup } = await openTestDb();
+    try {
+        let admin = await db.get('SELECT * FROM users WHERE email = ?', ['boss@test.local']);
+        assert.ok(admin);
+        assert.equal(admin.plan, 'admin');
+        assert.equal(admin.role, 'owner');
+        assert.equal(admin.is_super_admin, 1);
+
+        let login = await callController(SessionController.store, {
+            body: {
+                email: 'BOSS@test.local',
+                password: 'PrimeiraSenha123'
+            }
+        });
+        assert.equal(login.statusCode, 200);
+        assert.ok(login.body.token);
+        assert.equal(login.body.user.role, 'owner');
+        assert.equal(login.body.user.is_super_admin, 1);
+
+        const auth = await callAuthMiddleware(login.body.token);
+        assert.equal(auth.nextCalled, true);
+        assert.equal(auth.req.userId, admin.id);
+
+        const profile = await callController(UserController.show, {
+            userId: auth.req.userId
+        });
+        assert.equal(profile.statusCode, 200);
+        assert.equal(profile.body.email, 'boss@test.local');
+
+        process.env.SUPER_ADMIN_PASSWORD = 'SenhaNova456';
+        await connectDb();
+
+        const oldPasswordLogin = await callController(SessionController.store, {
+            body: {
+                email: 'boss@test.local',
+                password: 'PrimeiraSenha123'
+            }
+        });
+        assert.equal(oldPasswordLogin.statusCode, 401);
+
+        login = await callController(SessionController.store, {
+            body: {
+                email: 'boss@test.local',
+                password: 'SenhaNova456'
+            }
+        });
+        assert.equal(login.statusCode, 200);
+        assert.ok(login.body.token);
+
+        admin = await db.get('SELECT * FROM users WHERE email = ?', ['boss@test.local']);
+        assert.equal(admin.plan, 'admin');
+        assert.equal(admin.role, 'owner');
+        assert.equal(admin.is_super_admin, 1);
+
+        const wrongPassword = await callController(SessionController.store, {
+            body: {
+                email: 'boss@test.local',
+                password: 'senha-errada'
+            }
+        });
+        assert.equal(wrongPassword.statusCode, 401);
+
+        const missingUser = await callController(SessionController.store, {
+            body: {
+                email: 'ninguem@test.local',
+                password: 'SenhaNova456'
+            }
+        });
+        assert.equal(missingUser.statusCode, 401);
+    } finally {
+        if (previousEmail === undefined) delete process.env.SUPER_ADMIN_EMAIL;
+        else process.env.SUPER_ADMIN_EMAIL = previousEmail;
+
+        if (previousPassword === undefined) delete process.env.SUPER_ADMIN_PASSWORD;
+        else process.env.SUPER_ADMIN_PASSWORD = previousPassword;
+
+        if (previousJwtSecret === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = previousJwtSecret;
+
+        if (previousAppSecret === undefined) delete process.env.APP_SECRET;
+        else process.env.APP_SECRET = previousAppSecret;
+
         await cleanup();
     }
 });

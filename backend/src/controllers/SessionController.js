@@ -8,12 +8,13 @@ module.exports = {
         try {
             const email = normalizeEmail(req.body.email);
             const { password } = req.body;
+            const secret = process.env.JWT_SECRET || process.env.APP_SECRET;
 
             if (!isEmail(email) || !isNonEmptyString(password, 128)) {
                 return res.status(400).json({ error: 'Email e senha sao obrigatorios.' });
             }
 
-            if (!process.env.APP_SECRET) {
+            if (!secret) {
                 return res.status(500).json({ error: 'Configuracao de autenticacao ausente.' });
             }
 
@@ -29,15 +30,18 @@ module.exports = {
                 return res.status(401).json({ error: 'Credenciais invalidas.' });
             }
 
-            const { id, name, plan } = user;
+            const { id, name, plan, role, is_super_admin } = user;
 
             return res.json({
-                user: { id, name, email, plan },
-                token: jwt.sign({ id }, process.env.APP_SECRET, { expiresIn: '7d' }),
+                user: { id, name, email, plan, role, is_super_admin },
+                token: jwt.sign({ id }, secret, { expiresIn: '7d' }),
             });
         } catch (error) {
-            console.error('[SessionController.store]', error);
-            return res.status(500).json({ error: 'Erro ao processar a autenticacao.' });
+            console.error('Erro ao fazer login:', error);
+            return res.status(500).json({
+                error: 'Erro ao processar a autenticacao.',
+                ...(process.env.NODE_ENV !== 'production' || process.env.AUTH_DEBUG === 'true' ? { details: error.message } : {})
+            });
         }
     }
 };

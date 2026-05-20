@@ -2,8 +2,9 @@ const jwt = require('jsonwebtoken');
 
 module.exports = async (req, res, next) => {
     const authHeader = req.headers.authorization;
+    const secret = process.env.JWT_SECRET || process.env.APP_SECRET;
 
-    if (!process.env.APP_SECRET) {
+    if (!secret) {
         return res.status(500).json({ error: 'Configuracao de autenticacao ausente.' });
     }
 
@@ -21,7 +22,7 @@ module.exports = async (req, res, next) => {
 
     try {
         // 3. Verifica se o token é válido
-        const decoded = jwt.verify(token, process.env.APP_SECRET);
+        const decoded = jwt.verify(token, secret);
 
         // 4. Se for válido, guarda o ID do utilizador na requisição para uso nos controllers
         req.userId = decoded.id;

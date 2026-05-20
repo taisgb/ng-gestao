@@ -123,16 +123,16 @@ async function ensureSuperAdmin(pgDb) {
 
     if (!email || !password) return;
 
+    const passwordHash = await bcrypt.hash(password, 10);
     const existing = await pgDb.get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
         await pgDb.run(
-            "UPDATE users SET plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
-            [existing.id]
+            "UPDATE users SET password = ?, plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
+            [passwordHash, existing.id]
         );
         return;
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
     await pgDb.run(
         "INSERT INTO users (name, email, password, plan, role, is_super_admin) VALUES (?, ?, ?, 'admin', 'owner', 1)",
         ['Super Admin', email, passwordHash]
