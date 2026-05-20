@@ -2,5 +2,7 @@ node_modules/
 .env
 .env.*
 !.env.example
+backups/
+backend/backups/
 backend/src/config/database.sqlite
 frontend/build/

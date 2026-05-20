@@ -5,13 +5,13 @@ const { isEmail, isNonEmptyString, normalizeEmail } = require('../utils/validato
 const ALLOWED_PLANS = ['free', 'pro', 'admin', 'convidado'];
 
 async function getAdminUser(db, userId) {
-    return db.get('SELECT plan FROM users WHERE id = ?', [userId]);
+    return db.get('SELECT plan, is_super_admin FROM users WHERE id = ?', [userId]);
 }
 
 async function ensureAdmin(db, userId) {
     const admin = await getAdminUser(db, userId);
 
-    if (!admin || admin.plan !== 'admin') {
+    if (!admin || (admin.plan !== 'admin' && admin.is_super_admin !== 1)) {
         return false;
     }
 
@@ -79,7 +79,7 @@ module.exports = {
         try {
             const db = await connectDb();
             const user = await db.get(
-                'SELECT id, name, email, plan, role_title, location, bio, created_at FROM users WHERE id = ?',
+                'SELECT id, name, email, plan, role, is_super_admin, role_title, location, bio, created_at FROM users WHERE id = ?',
                 [req.userId]
             );
 
@@ -145,7 +145,7 @@ module.exports = {
                 req.userId
             ]);
 
-            const user = await db.get('SELECT id, name, email, plan, role_title, location, bio, created_at FROM users WHERE id = ?', [req.userId]);
+            const user = await db.get('SELECT id, name, email, plan, role, is_super_admin, role_title, location, bio, created_at FROM users WHERE id = ?', [req.userId]);
 
             return res.json(user);
         } catch (error) {
@@ -168,6 +168,11 @@ module.exports = {
 
             if (!isAdmin) {
                 return res.status(403).json({ error: 'Apenas administradores podem alterar planos.' });
+            }
+
+            const target = await db.get('SELECT id, is_super_admin FROM users WHERE email = ?', [email]);
+            if (target?.is_super_admin === 1 && newPlan !== 'admin') {
+                return res.status(403).json({ error: 'Super admin nao pode ser rebaixado.' });
             }
 
             const result = await db.run(
@@ -196,7 +201,7 @@ module.exports = {
             }
 
             const users = await db.all(`
-                SELECT id, name, email, plan, role_title, location, bio, created_at
+                SELECT id, name, email, plan, role, is_super_admin, role_title, location, bio, created_at
                 FROM users
                 ORDER BY created_at DESC, name ASC
             `);

@@ -1,10 +1,441 @@
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const { Pool } = require('pg');
 
 const namedConnections = new Map();
+let postgresConnection = null;
+
+const POSTGRES_SCHEMA = `
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        password TEXT NOT NULL,
+        plan TEXT DEFAULT 'free',
+        role TEXT DEFAULT 'member',
+        is_super_admin INTEGER DEFAULT 0,
+        role_title TEXT,
+        location TEXT,
+        bio TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS invitations (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE,
+        plan TEXT DEFAULT 'convidado',
+        invited_by INTEGER NOT NULL REFERENCES users(id),
+        accepted_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS teams (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        owner_id INTEGER NOT NULL REFERENCES users(id),
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS team_members (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id),
+        user_id INTEGER REFERENCES users(id),
+        email TEXT NOT NULL,
+        role TEXT DEFAULT 'member',
+        status TEXT DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(team_id, email)
+    );
+
+    CREATE TABLE IF NOT EXISTS team_invites (
+        id SERIAL PRIMARY KEY,
+        team_id INTEGER NOT NULL REFERENCES teams(id),
+        email TEXT NOT NULL,
+        invited_by INTEGER NOT NULL REFERENCES users(id),
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        accepted_at TIMESTAMP,
+        UNIQUE(team_id, email)
+    );
+
+    CREATE TABLE IF NOT EXISTS clients (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        team_id INTEGER REFERENCES teams(id),
+        scope TEXT DEFAULT 'individual',
+        name TEXT NOT NULL,
+        contact_name TEXT,
+        phone TEXT,
+        email TEXT,
+        document TEXT,
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS projects (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        client_id INTEGER NOT NULL REFERENCES clients(id),
+        team_id INTEGER REFERENCES teams(id),
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'pendente',
+        base_value DOUBLE PRECISION DEFAULT 0,
+        payment_type TEXT,
+        payment_status TEXT DEFAULT 'pendente',
+        amount_paid DOUBLE PRECISION DEFAULT 0,
+        deadline DATE,
+        archived INTEGER DEFAULT 0,
+        archived_at TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS project_members (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        role TEXT DEFAULT 'collaborator',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(project_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS project_statuses (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        name TEXT NOT NULL,
+        position INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(project_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS project_notes (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        note TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS project_financial_shares (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        amount DOUBLE PRECISION DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(project_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        project_id INTEGER REFERENCES projects(id),
+        team_id INTEGER REFERENCES teams(id),
+        title TEXT NOT NULL,
+        task_type TEXT DEFAULT 'execucao',
+        status TEXT DEFAULT 'pendente',
+        due_date DATE NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS services (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        team_id INTEGER REFERENCES teams(id),
+        scope TEXT DEFAULT 'individual',
+        name TEXT NOT NULL,
+        default_price DOUBLE PRECISION DEFAULT 0,
+        default_value DOUBLE PRECISION DEFAULT 0,
+        description TEXT,
+        active INTEGER DEFAULT 1,
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS invoices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        project_id INTEGER REFERENCES projects(id),
+        number TEXT,
+        client_name TEXT NOT NULL,
+        description TEXT,
+        amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+        issue_date DATE NOT NULL,
+        status TEXT DEFAULT 'pendente',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS transactions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        type TEXT NOT NULL,
+        entity TEXT NOT NULL DEFAULT 'MEI',
+        category TEXT NOT NULL,
+        amount DOUBLE PRECISION NOT NULL,
+        date DATE NOT NULL,
+        description TEXT,
+        project_id INTEGER REFERENCES projects(id),
+        project_financial_entry_id INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS personal_status (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id),
+        total_bank_balance DOUBLE PRECISION DEFAULT 0,
+        total_debt DOUBLE PRECISION DEFAULT 0,
+        credit_card_bill DOUBLE PRECISION DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS renegotiations (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        description TEXT NOT NULL,
+        installment_value DOUBLE PRECISION NOT NULL,
+        total_installments INTEGER,
+        current_installment INTEGER DEFAULT 1,
+        start_date DATE NOT NULL,
+        active INTEGER DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS project_financial_entries (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        team_id INTEGER REFERENCES teams(id),
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        created_by INTEGER NOT NULL REFERENCES users(id),
+        type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+        date DATE NOT NULL,
+        status TEXT DEFAULT 'pending',
+        payment_method TEXT,
+        affects_project_total INTEGER DEFAULT 0,
+        affects_my_financial INTEGER DEFAULT 0,
+        reimbursable INTEGER DEFAULT 0,
+        reimbursed_at DATE,
+        notes TEXT,
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_fiscal_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+        company_type TEXT DEFAULT 'mei',
+        annual_revenue_limit DOUBLE PRECISION DEFAULT 81000,
+        opening_date DATE,
+        use_proportional_limit INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS personal_transactions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+        date DATE NOT NULL,
+        status TEXT DEFAULT 'expected',
+        payment_method TEXT,
+        source TEXT DEFAULT 'manual',
+        project_id INTEGER REFERENCES projects(id),
+        team_id INTEGER REFERENCES teams(id),
+        transaction_id INTEGER REFERENCES transactions(id),
+        project_financial_entry_id INTEGER REFERENCES project_financial_entries(id),
+        notes TEXT,
+        is_recurring INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS documents (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        team_id INTEGER REFERENCES teams(id),
+        client_id INTEGER REFERENCES clients(id),
+        project_id INTEGER REFERENCES projects(id),
+        invoice_id INTEGER REFERENCES invoices(id),
+        transaction_id INTEGER REFERENCES transactions(id),
+        project_financial_entry_id INTEGER REFERENCES project_financial_entries(id),
+        file_name TEXT NOT NULL,
+        file_url TEXT NOT NULL,
+        provider TEXT DEFAULT 'external',
+        document_type TEXT DEFAULT 'other',
+        description TEXT,
+        mime_type TEXT,
+        size INTEGER,
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS document_permissions (
+        id SERIAL PRIMARY KEY,
+        document_id INTEGER NOT NULL REFERENCES documents(id),
+        user_id INTEGER REFERENCES users(id),
+        team_id INTEGER REFERENCES teams(id),
+        role TEXT DEFAULT 'viewer',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(document_id, user_id, team_id)
+    );
+`;
+
+function translateSqlForPostgres(sql) {
+    let translated = sql
+        .replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, 'INSERT INTO')
+        .replace(/strftime\('%Y-%m',\s*([^)]+)\)/gi, "TO_CHAR($1::date, 'YYYY-MM')")
+        .replace(/strftime\('%m',\s*([^)]+)\)/gi, "TO_CHAR($1::date, 'MM')")
+        .replace(/strftime\('%Y',\s*([^)]+)\)/gi, "TO_CHAR($1::date, 'YYYY')")
+        .replace(/DATE\('now'\)/gi, 'CURRENT_DATE');
+
+    let index = 0;
+    translated = translated.replace(/\?/g, () => `$${++index}`);
+
+    if (/^\s*INSERT\s+/i.test(translated) && !/\bRETURNING\b/i.test(translated)) {
+        const trimmed = translated.trim().replace(/;$/, '');
+        if (/\bON\s+CONFLICT\b/i.test(trimmed)) {
+            translated = `${trimmed} RETURNING id`;
+        } else {
+            translated = `${trimmed} RETURNING id`;
+        }
+    }
+
+    if (/INSERT\s+INTO/i.test(translated) && /project_statuses|project_financial_shares|project_members|personal_status/i.test(translated) && !/\bON\s+CONFLICT\b/i.test(translated)) {
+        translated = translated.replace(/\s+RETURNING id$/i, ' ON CONFLICT DO NOTHING RETURNING id');
+    }
+
+    return translated;
+}
+
+class PostgresCompatDb {
+    constructor(pool) {
+        this.pool = pool;
+        this.isPostgres = true;
+    }
+
+    async get(sql, params = []) {
+        const result = await this.pool.query(translateSqlForPostgres(sql), params);
+        return result.rows[0];
+    }
+
+    async all(sql, params = []) {
+        const result = await this.pool.query(translateSqlForPostgres(sql), params);
+        return result.rows;
+    }
+
+    async run(sql, params = []) {
+        const result = await this.pool.query(translateSqlForPostgres(sql), params);
+        return {
+            lastID: result.rows?.[0]?.id,
+            changes: result.rowCount
+        };
+    }
+
+    async exec(sql) {
+        return this.pool.query(sql);
+    }
+
+    async close() {
+        await this.pool.end();
+        postgresConnection = null;
+    }
+}
+
+async function ensurePostgresColumn(db, table, name, type) {
+    await db.exec(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${name} ${type}`);
+}
+
+async function bootstrapSuperAdmin(db) {
+    const email = (process.env.SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
+    const password = process.env.SUPER_ADMIN_PASSWORD;
+
+    if (!email || !password) return;
+
+    const existing = await db.get('SELECT id FROM users WHERE email = ?', [email]);
+    if (existing) {
+        await db.run(
+            "UPDATE users SET plan = 'admin', role = 'owner', is_super_admin = 1 WHERE id = ?",
+            [existing.id]
+        );
+        return;
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await db.run(
+        "INSERT INTO users (name, email, password, plan, role, is_super_admin) VALUES (?, ?, ?, 'admin', 'owner', 1)",
+        ['Super Admin', email, passwordHash]
+    );
+}
+
+async function connectPostgresDb() {
+    if (postgresConnection) return postgresConnection;
+
+    if (!process.env.DATABASE_URL) {
+        throw new Error('DATABASE_URL é obrigatório para conectar ao PostgreSQL.');
+    }
+
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: process.env.DATABASE_SSL === 'true'
+            ? { rejectUnauthorized: false }
+            : false
+    });
+
+    const db = new PostgresCompatDb(pool);
+    await db.exec(POSTGRES_SCHEMA);
+
+    await ensurePostgresColumn(db, 'users', 'role', "TEXT DEFAULT 'member'");
+    await ensurePostgresColumn(db, 'users', 'is_super_admin', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'users', 'role_title', 'TEXT');
+    await ensurePostgresColumn(db, 'users', 'location', 'TEXT');
+    await ensurePostgresColumn(db, 'users', 'bio', 'TEXT');
+    await ensurePostgresColumn(db, 'clients', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'clients', 'scope', "TEXT DEFAULT 'individual'");
+    await ensurePostgresColumn(db, 'projects', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'projects', 'archived_at', 'TIMESTAMP');
+    await ensurePostgresColumn(db, 'services', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'services', 'scope', "TEXT DEFAULT 'individual'");
+    await ensurePostgresColumn(db, 'services', 'default_value', 'DOUBLE PRECISION DEFAULT 0');
+    await ensurePostgresColumn(db, 'services', 'archived', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'tasks', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'transactions', 'project_financial_entry_id', 'INTEGER');
+    await ensurePostgresColumn(db, 'personal_transactions', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'personal_transactions', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
+    await ensurePostgresColumn(db, 'personal_transactions', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+    await ensurePostgresColumn(db, 'personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'personal_transactions', 'archived', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'documents', 'team_id', 'INTEGER REFERENCES teams(id)');
+    await ensurePostgresColumn(db, 'documents', 'client_id', 'INTEGER REFERENCES clients(id)');
+    await ensurePostgresColumn(db, 'documents', 'project_id', 'INTEGER REFERENCES projects(id)');
+    await ensurePostgresColumn(db, 'documents', 'invoice_id', 'INTEGER REFERENCES invoices(id)');
+    await ensurePostgresColumn(db, 'documents', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
+    await ensurePostgresColumn(db, 'documents', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+
+    await bootstrapSuperAdmin(db);
+
+    console.log('Conectado ao banco de dados PostgreSQL.');
+    postgresConnection = db;
+    return db;
+}
 
 async function connectDb() {
+    if (process.env.DATABASE_URL && !process.env.SQLITE_FILENAME) {
+        return connectPostgresDb();
+    }
+
+    if (process.env.NODE_ENV === 'production' && !process.env.SQLITE_FILENAME) {
+        throw new Error('DATABASE_URL e obrigatorio em producao. SQLite fica apenas para uso local/backup.');
+    }
+
     const filename = process.env.SQLITE_FILENAME
         ? path.resolve(process.env.SQLITE_FILENAME)
         : path.resolve(__dirname, 'database.sqlite');
@@ -387,6 +818,25 @@ async function connectDb() {
     await ensureColumn('documents', 'size', 'INTEGER');
     await ensureColumn('documents', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('documents', 'updated_at', 'DATETIME');
+    await ensureColumn('users', 'role', "TEXT DEFAULT 'member'");
+    await ensureColumn('users', 'is_super_admin', 'INTEGER DEFAULT 0');
+
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS document_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id INTEGER NOT NULL,
+            user_id INTEGER,
+            team_id INTEGER,
+            role TEXT DEFAULT 'viewer',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(document_id, user_id, team_id),
+            FOREIGN KEY (document_id) REFERENCES documents(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (team_id) REFERENCES teams(id)
+        );
+    `);
+
+    await bootstrapSuperAdmin(db);
 
     if (process.env.SQLITE_FILENAME) {
         namedConnections.set(filename, db);
