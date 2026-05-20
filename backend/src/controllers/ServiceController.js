@@ -100,7 +100,7 @@ module.exports = {
                     OR ? = 'all'
                 )
                   AND ((s.team_id IS NULL AND s.user_id = ?) OR tm.user_id IS NOT NULL)
-                ORDER BY archived ASC, s.name ASC
+                ORDER BY CASE WHEN s.archived = 1 OR s.active = 0 THEN 1 ELSE 0 END ASC, s.name ASC
             `, [req.userId, status, status, status, req.userId]);
 
             return res.json(services);

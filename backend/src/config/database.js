@@ -315,17 +315,15 @@ function translateSqlForPostgres(sql) {
     let index = 0;
     translated = translated.replace(/\?/g, () => `$${++index}`);
 
+    const returningColumn = /\bINTO\s+personal_status\b/i.test(translated) ? 'user_id' : 'id';
+
     if (/^\s*INSERT\s+/i.test(translated) && !/\bRETURNING\b/i.test(translated)) {
         const trimmed = translated.trim().replace(/;$/, '');
-        if (/\bON\s+CONFLICT\b/i.test(trimmed)) {
-            translated = `${trimmed} RETURNING id`;
-        } else {
-            translated = `${trimmed} RETURNING id`;
-        }
+        translated = `${trimmed} RETURNING ${returningColumn}`;
     }
 
     if (/INSERT\s+INTO/i.test(translated) && /project_statuses|project_financial_shares|project_members|personal_status/i.test(translated) && !/\bON\s+CONFLICT\b/i.test(translated)) {
-        translated = translated.replace(/\s+RETURNING id$/i, ' ON CONFLICT DO NOTHING RETURNING id');
+        translated = translated.replace(new RegExp(`\\s+RETURNING ${returningColumn}$`, 'i'), ` ON CONFLICT DO NOTHING RETURNING ${returningColumn}`);
     }
 
     return translated;
@@ -350,7 +348,7 @@ class PostgresCompatDb {
     async run(sql, params = []) {
         const result = await this.pool.query(translateSqlForPostgres(sql), params);
         return {
-            lastID: result.rows?.[0]?.id,
+            lastID: result.rows?.[0]?.id ?? result.rows?.[0]?.user_id,
             changes: result.rowCount
         };
     }
