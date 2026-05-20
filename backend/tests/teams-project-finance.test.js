@@ -685,6 +685,100 @@ test('task status endpoint completes and reopens tasks without date cast errors'
     }
 });
 
+test('task due date persists on create, update, list, summary and dashboard feed', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        const today = new Date().toISOString().split('T')[0];
+        const tomorrowDate = new Date();
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrow = tomorrowDate.toISOString().split('T')[0];
+
+        const createdWithDueDate = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                title: 'Tarefa com prazo',
+                due_date: today,
+                priority: 'high'
+            }
+        });
+        assert.equal(createdWithDueDate.statusCode, 201);
+
+        let saved = await db.get('SELECT due_date FROM tasks WHERE id = ?', [createdWithDueDate.body.id]);
+        assert.equal(String(saved.due_date).slice(0, 10), today);
+
+        const list = await callController(TaskController.index, {
+            userId: seeded.ownerId,
+            query: {}
+        });
+        assert.equal(list.statusCode, 200);
+        const listedTask = list.body.find(task => task.id === createdWithDueDate.body.id);
+        assert.equal(listedTask.due_date, today);
+
+        const dashboardTasks = await callController(TaskController.today, {
+            userId: seeded.ownerId,
+            query: {}
+        });
+        assert.equal(dashboardTasks.statusCode, 200);
+        assert.equal(dashboardTasks.body.some(task => task.id === createdWithDueDate.body.id && task.due_date === today), true);
+
+        const summary = await callController(TaskController.summary, {
+            userId: seeded.ownerId,
+            query: {}
+        });
+        assert.equal(summary.statusCode, 200);
+        assert.equal(summary.body.week >= 1, true);
+
+        const noDateTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                title: 'Tarefa sem prazo'
+            }
+        });
+        assert.equal(noDateTask.statusCode, 201);
+
+        const addDueDate = await callController(TaskController.update, {
+            userId: seeded.ownerId,
+            params: { id: noDateTask.body.id },
+            body: { due_date: today }
+        });
+        assert.equal(addDueDate.statusCode, 200);
+
+        saved = await db.get('SELECT due_date FROM tasks WHERE id = ?', [noDateTask.body.id]);
+        assert.equal(String(saved.due_date).slice(0, 10), today);
+
+        const changeDueDate = await callController(TaskController.update, {
+            userId: seeded.ownerId,
+            params: { id: noDateTask.body.id },
+            body: { due_date: tomorrow }
+        });
+        assert.equal(changeDueDate.statusCode, 200);
+
+        saved = await db.get('SELECT due_date FROM tasks WHERE id = ?', [noDateTask.body.id]);
+        assert.equal(String(saved.due_date).slice(0, 10), tomorrow);
+
+        const removeDueDate = await callController(TaskController.update, {
+            userId: seeded.ownerId,
+            params: { id: noDateTask.body.id },
+            body: { due_date: null }
+        });
+        assert.equal(removeDueDate.statusCode, 200);
+
+        saved = await db.get('SELECT due_date FROM tasks WHERE id = ?', [noDateTask.body.id]);
+        assert.equal(saved.due_date, null);
+
+        const calendar = await callController(TaskController.index, {
+            userId: seeded.ownerId,
+            query: { view: 'calendar' }
+        });
+        assert.equal(calendar.statusCode, 200);
+        assert.equal(calendar.body.some(task => task.id === createdWithDueDate.body.id), true);
+        assert.equal(calendar.body.some(task => task.id === noDateTask.body.id), false);
+    } finally {
+        await cleanup();
+    }
+});
+
 test('team archive and restore are owner-only and filtered by status', async () => {
     const { db, cleanup } = await openTestDb();
     try {

@@ -42,6 +42,31 @@ function isDone(status) {
     return DONE_STATUSES.includes(status) || String(status || '').toLowerCase().startsWith('conclu');
 }
 
+function toDateOnly(value) {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+        return value.toISOString().split('T')[0];
+    }
+
+    const stringValue = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) return stringValue;
+    if (/^\d{4}-\d{2}-\d{2}T/.test(stringValue)) return stringValue.split('T')[0];
+
+    return null;
+}
+
+function normalizeTaskRow(row, currentUserId = null) {
+    if (!row) return row;
+
+    return {
+        ...row,
+        due_date: toDateOnly(row.due_date),
+        completed_at: row.completed_at instanceof Date ? row.completed_at.toISOString() : row.completed_at,
+        ...(currentUserId ? { current_user_id: currentUserId } : {})
+    };
+}
+
 async function canAccessTaskRow(db, task, userId, requireEdit = false) {
     if (!task) return false;
 
@@ -88,7 +113,7 @@ async function canAccessTaskRow(db, task, userId, requireEdit = false) {
 }
 
 async function getTask(db, id) {
-    return db.get(
+    const task = await db.get(
         `
         SELECT 
             t.*, 
@@ -107,6 +132,8 @@ async function getTask(db, id) {
         `,
         [id]
     );
+
+    return normalizeTaskRow(task);
 }
 
 function applyTaskFilters(tasks, query = {}) {
@@ -223,11 +250,10 @@ async function listTasksForUser(db, userId, query = {}) {
     const allowed = [];
 
     for (const row of rows || []) {
-        if (await canAccessTaskRow(db, row, numericUserId)) {
-            allowed.push({
-                ...row,
-                current_user_id: numericUserId
-            });
+        const normalizedRow = normalizeTaskRow(row, numericUserId);
+
+        if (await canAccessTaskRow(db, normalizedRow, numericUserId)) {
+            allowed.push(normalizedRow);
         }
     }
 
@@ -495,14 +521,19 @@ module.exports = {
                 addField('status', nextStatus, 'TEXT');
 
                 if (isDone(nextStatus)) {
-                    addField('completed_at', new Date().toISOString(), 'TIMESTAMP');
+                    addField('completed_at', new Date().toISOString(), db.isPostgres ? 'TIMESTAMP' : null);
                 } else if (nextStatus === 'pendente') {
                     fields.push('completed_at = NULL');
                 }
             }
 
             if (req.body.due_date !== undefined) {
-                addField('due_date', req.body.due_date || null, 'DATE');
+                const dueDate = req.body.due_date || null;
+                if (dueDate && !isDate(dueDate)) {
+                    return res.status(400).json({ error: 'Data invalida.' });
+                }
+
+                addField('due_date', dueDate, db.isPostgres ? 'DATE' : null);
             }
 
             if (req.body.assigned_to !== undefined) {

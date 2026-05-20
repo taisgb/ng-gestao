@@ -45,7 +45,7 @@ export default function Dashboard() {
     const isDone = isDoneStatus(task.status);
 
     try {
-      await api.put(`/tasks/${task.id}`, { status: isDone ? 'pendente' : 'concluido' });
+      await api.patch(`/tasks/${task.id}/status`, { status: isDone ? 'pending' : 'done' });
       await loadDashboard();
     } catch (error) {
       alert('Erro ao atualizar a tarefa.');
@@ -88,6 +88,11 @@ export default function Dashboard() {
                       <span>
                         {task.project_title || 'Sem projeto'} | {task.client_name || 'Sem cliente'}
                       </span>
+                      {task.due_date && (
+                        <span>
+                          Prazo: {new Date(task.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                        </span>
+                      )}
                     </div>
                     <button
                       className="btn-complete"
