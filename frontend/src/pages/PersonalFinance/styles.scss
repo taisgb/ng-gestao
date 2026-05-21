@@ -155,7 +155,7 @@ $line: #ece7df;
     .table-head,
     article {
       display: grid;
-      grid-template-columns: 90px minmax(150px, 1.3fr) 130px minmax(150px, 1fr) 140px 100px 110px minmax(220px, 1fr);
+      grid-template-columns: 90px minmax(150px, 1.3fr) 130px minmax(150px, 1fr) 140px 100px 110px 96px;
       gap: 8px;
       align-items: center;
     }
@@ -227,18 +227,136 @@ $line: #ece7df;
 
   .row-actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    justify-content: flex-end;
 
     button {
       border: 1px solid $line;
       border-radius: 8px;
       background: $sand-bg;
       color: $ink-blue;
-      padding: 7px 8px;
+      min-height: 36px;
+      padding: 7px 12px;
       font-size: 0.76rem;
+      font-weight: 800;
+      white-space: nowrap;
 
       &.danger { color: #c24141; }
+    }
+
+    .actions-trigger {
+      background: #f6f2eb;
+      border-color: rgba($leaf-green, 0.24);
+      color: $leaf-green;
+      box-shadow: 0 8px 18px rgba(29, 53, 44, 0.08);
+
+      &:hover {
+        background: $leaf-green;
+        color: #fff;
+      }
+    }
+  }
+
+  .action-modal-backdrop {
+    align-items: center;
+    background: rgba(18, 24, 20, 0.52);
+    backdrop-filter: blur(8px);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 18px;
+    position: fixed;
+    z-index: 80;
+  }
+
+  .action-modal {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 14px;
+    box-shadow: 0 24px 70px rgba(17, 24, 39, 0.22);
+    max-width: 430px;
+    padding: 18px;
+    width: min(430px, 100%);
+
+    header {
+      align-items: flex-start;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+
+      span {
+        color: #777;
+        display: block;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+
+      strong {
+        color: $earth-brown;
+        font-size: 1rem;
+      }
+    }
+
+    .modal-close {
+      align-items: center;
+      background: $sand-bg;
+      border: 1px solid $line;
+      border-radius: 999px;
+      color: $ink-blue;
+      display: inline-flex;
+      font-weight: 900;
+      height: 34px;
+      justify-content: center;
+      width: 34px;
+    }
+
+    .action-summary {
+      background: $sand-bg;
+      border-radius: 10px;
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(3, 1fr);
+      margin-bottom: 14px;
+      padding: 12px;
+
+      span {
+        color: #777;
+        font-size: 0.82rem;
+      }
+
+      strong {
+        color: $earth-brown;
+        text-align: right;
+      }
+    }
+
+    .action-modal-grid {
+      display: grid;
+      gap: 8px;
+
+      button {
+        background: #fff;
+        border: 1px solid $line;
+        border-radius: 10px;
+        color: $ink-blue;
+        font-weight: 800;
+        padding: 11px 12px;
+        text-align: left;
+
+        &:hover {
+          border-color: rgba($leaf-green, 0.35);
+          color: $leaf-green;
+          transform: translateY(-1px);
+        }
+
+        &.danger {
+          border-color: rgba(194, 65, 65, 0.28);
+          color: #b91c1c;
+        }
+      }
     }
   }
 
@@ -312,6 +430,10 @@ $line: #ece7df;
         border-radius: 8px;
         padding: 12px;
       }
+
+      .row-actions {
+        justify-content: flex-start;
+      }
     }
   }
 }
@@ -348,6 +470,53 @@ body[data-theme='dark'] {
 
       .scope-cell small {
         color: #c8c1b7;
+      }
+    }
+
+    .action-modal {
+      background: #18211c;
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+
+      header {
+        span {
+          color: #c8c1b7;
+        }
+
+        strong {
+          color: #f4f1ea;
+        }
+      }
+
+      .modal-close,
+      .action-summary {
+        background: #111814;
+        border-color: rgba(255, 255, 255, 0.10);
+      }
+
+      .action-summary {
+        span {
+          color: #c8c1b7;
+        }
+
+        strong {
+          color: #f4f1ea;
+        }
+      }
+
+      .action-modal-grid button {
+        background: #111814;
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #f4f1ea;
+
+        &:hover {
+          background: rgba(255, 255, 255, 0.06);
+          color: #a8d99b;
+        }
+
+        &.danger {
+          color: #fca5a5;
+        }
       }
     }
   }

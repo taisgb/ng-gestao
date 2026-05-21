@@ -86,6 +86,7 @@ export default function PersonalFinance() {
   const [renegotiations, setRenegotiations] = useState([]);
   const [feedback, setFeedback] = useState('');
   const [editing, setEditing] = useState(null);
+  const [actionTransaction, setActionTransaction] = useState(null);
   const [filters, setFilters] = useState({
     month: '',
     year: '',
@@ -184,6 +185,7 @@ export default function PersonalFinance() {
 
   function startEdit(item) {
     setEditing(item);
+    setActionTransaction(null);
     setTransactionForm({
       description: item.description || '',
       type: item.type || 'income',
@@ -205,6 +207,27 @@ export default function PersonalFinance() {
       notes: item.notes || '',
       is_recurring: Boolean(item.is_recurring)
     });
+  }
+
+  function handleActionEdit(item) {
+    startEdit(item);
+    window.setTimeout(() => {
+      document.querySelector('.panel.wide')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  }
+
+  async function handleActionStatus(status) {
+    if (!actionTransaction) return;
+    const item = actionTransaction;
+    setActionTransaction(null);
+    await handleStatus(item, status);
+  }
+
+  async function handleActionArchive() {
+    if (!actionTransaction) return;
+    const item = actionTransaction;
+    setActionTransaction(null);
+    await handleArchive(item);
   }
 
   async function handleSaveTransaction(e) {
@@ -319,7 +342,7 @@ export default function PersonalFinance() {
           <span>{kind === 'income' ? 'Origem' : 'Origem/Forma'}</span>
           <span>Status</span>
           <span>Valor</span>
-          <span>Acoes</span>
+          <span>Ações</span>
         </div>
         {rows.map(item => (
           <article key={item.id}>
@@ -334,10 +357,7 @@ export default function PersonalFinance() {
             <span className={`status ${item.status}`}>{statusLabels[item.status] || item.status}</span>
             <strong>{formatCurrency(item.amount)}</strong>
             <div className="row-actions">
-              <button onClick={() => startEdit(item)}>Editar</button>
-              {item.status !== 'paid' && <button onClick={() => handleStatus(item, 'paid')}>Pago</button>}
-              {item.status !== 'canceled' && <button onClick={() => handleStatus(item, 'canceled')}>Cancelar</button>}
-              <button className="danger" onClick={() => handleArchive(item)}>Arquivar</button>
+              <button type="button" className="actions-trigger" onClick={() => setActionTransaction(item)}>Ações</button>
             </div>
           </article>
         ))}
@@ -356,6 +376,32 @@ export default function PersonalFinance() {
       </header>
 
       {feedback && <div className="feedback-message">{feedback}</div>}
+
+      {actionTransaction && (
+        <div className="action-modal-backdrop" onClick={() => setActionTransaction(null)}>
+          <div className="action-modal" role="dialog" aria-modal="true" aria-label="Ações do lançamento" onClick={event => event.stopPropagation()}>
+            <header>
+              <div>
+                <span>Ações do lançamento</span>
+                <strong>{actionTransaction.description}</strong>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setActionTransaction(null)}>x</button>
+            </header>
+            <div className="action-summary">
+              <span>{formatDate(actionTransaction.date)}</span>
+              <span>{statusLabels[actionTransaction.status] || actionTransaction.status}</span>
+              <strong>{formatCurrency(actionTransaction.amount)}</strong>
+            </div>
+            <div className="action-modal-grid">
+              <button type="button" onClick={() => handleActionEdit(actionTransaction)}>Editar lançamento</button>
+              {actionTransaction.status !== 'paid' && <button type="button" onClick={() => handleActionStatus('paid')}>Marcar como pago</button>}
+              {actionTransaction.status !== 'expected' && <button type="button" onClick={() => handleActionStatus('expected')}>Voltar para previsto</button>}
+              {actionTransaction.status !== 'canceled' && <button type="button" onClick={() => handleActionStatus('canceled')}>Cancelar lançamento</button>}
+              <button type="button" className="danger" onClick={handleActionArchive}>Arquivar lançamento</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section className="personal-summary">
         <div className="summary-card"><span>Saldo em bancos</span><strong>{formatCurrency(summary?.bank_balance)}</strong></div>
