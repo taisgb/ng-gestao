@@ -28,6 +28,16 @@ const typeLabels = {
   other: 'Outro'
 };
 
+const quickFilters = [
+  { key: 'all', label: 'Todos', filters: { document_type: '', provider: '', status: 'active' } },
+  { key: 'contracts', label: 'Contratos', filters: { document_type: 'contract', provider: '', status: 'active' } },
+  { key: 'invoices', label: 'NFs', filters: { document_type: 'invoice', provider: '', status: 'active' } },
+  { key: 'receipts', label: 'Comprovantes', filters: { document_type: 'receipt', provider: '', status: 'active' } },
+  { key: 'links', label: 'Links', filters: { document_type: '', provider: 'external', status: 'active' } },
+  { key: 'internal', label: 'Drive/Pastas', filters: { document_type: 'folder', provider: 'drive', status: 'active' } },
+  { key: 'archived', label: 'Arquivados', filters: { document_type: '', provider: '', status: 'archived' } }
+];
+
 export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -38,11 +48,13 @@ export default function Documents() {
   const [editing, setEditing] = useState(null);
   const [filters, setFilters] = useState({
     status: 'active',
+    search: '',
     document_type: '',
     provider: '',
     team_id: '',
     client_id: '',
-    project_id: ''
+    project_id: '',
+    invoice_id: ''
   });
   const [form, setForm] = useState(emptyForm);
 
@@ -160,6 +172,26 @@ export default function Documents() {
   const activeCount = documents.filter(item => item.archived !== 1).length;
   const archivedCount = documents.filter(item => item.archived === 1).length;
 
+  function applyQuickFilter(preset) {
+    setFilters(current => ({
+      ...current,
+      ...preset.filters
+    }));
+  }
+
+  function clearFilters() {
+    setFilters({
+      status: 'active',
+      search: '',
+      document_type: '',
+      provider: '',
+      team_id: '',
+      client_id: '',
+      project_id: '',
+      invoice_id: ''
+    });
+  }
+
   return (
     <div className="documents-container">
       <header className="page-header">
@@ -177,7 +209,31 @@ export default function Documents() {
         <div><span>Arquivados</span><strong>{archivedCount}</strong></div>
       </section>
 
+      <section className="documents-quick-filters" aria-label="Filtros rapidos de documentos">
+        {quickFilters.map(preset => (
+          <button
+            key={preset.key}
+            type="button"
+            className={
+              filters.document_type === preset.filters.document_type &&
+              filters.provider === preset.filters.provider &&
+              filters.status === preset.filters.status
+                ? 'active'
+                : ''
+            }
+            onClick={() => applyQuickFilter(preset)}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </section>
+
       <section className="documents-filters">
+        <input
+          value={filters.search}
+          onChange={e => setFilters({ ...filters, search: e.target.value })}
+          placeholder="Buscar por nome, cliente, projeto, NF ou link"
+        />
         <select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
           <option value="active">Ativos</option>
           <option value="archived">Arquivados</option>
@@ -203,6 +259,11 @@ export default function Documents() {
           <option value="">Todos os projetos</option>
           {projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select>
+        <select value={filters.invoice_id} onChange={e => setFilters({ ...filters, invoice_id: e.target.value })}>
+          <option value="">Todas as NFs</option>
+          {invoices.map(invoice => <option key={invoice.id} value={invoice.id}>{invoice.number || `NF ${invoice.id}`} - {invoice.client_name}</option>)}
+        </select>
+        <button type="button" onClick={clearFilters}>Limpar filtros</button>
       </section>
 
       <section className="document-form-panel">
@@ -256,6 +317,7 @@ export default function Documents() {
                 <small>{document.team_id ? `Time: ${document.team_name}` : 'Individual'}</small>
                 {document.client_name && <small>{document.client_name}</small>}
                 {document.project_title && <small>{document.project_title}</small>}
+                {document.invoice_number && <small>NF: {document.invoice_number}</small>}
                 {document.archived === 1 && <small className="archived-badge">Arquivado</small>}
               </div>
             </div>

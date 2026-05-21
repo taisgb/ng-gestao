@@ -224,6 +224,14 @@
     white-space: nowrap;
   }
 
+  .btn-delete-team {
+    background: transparent;
+    border: 1px solid rgba(194, 65, 65, 0.35);
+    color: #c24141;
+    min-height: 34px;
+    padding: 6px 10px;
+  }
+
   .empty-msg {
     color: var(--text-muted, #758195);
   }

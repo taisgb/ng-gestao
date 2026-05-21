@@ -5,6 +5,23 @@ import { useAuth } from '../../hooks/useAuth';
 import ModalProject from '../../components/ModalProject';
 import './styles.scss';
 
+const PROJECT_STATUS_META = {
+  pendente: { label: 'Pendente', className: 'pending' },
+  aprovado: { label: 'Aprovado', className: 'approved' },
+  'em andamento': { label: 'Em andamento', className: 'in-progress' },
+  concluido: { label: 'Concluido', className: 'done' },
+  'concluído': { label: 'Concluido', className: 'done' },
+  garantia: { label: 'Garantia', className: 'warranty' }
+};
+
+function getProjectStatusMeta(status) {
+  const normalized = String(status || 'pendente').toLowerCase().trim();
+  return PROJECT_STATUS_META[normalized] || {
+    label: status || 'Pendente',
+    className: normalized.replace(/\s+/g, '-').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  };
+}
+
 export default function Projects() {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
@@ -134,7 +151,9 @@ export default function Projects() {
       ) : (
         <div className="projects-list">
           {projects.length > 0 ? (
-            projects.map(project => (
+            projects.map(project => {
+              const statusMeta = getProjectStatusMeta(project.status);
+              return (
               <div key={project.id} className={`project-card ${project.archived === 1 ? 'archived' : ''}`}>
                 <div className="project-main-info">
                   <h3>{project.title}</h3>
@@ -153,8 +172,8 @@ export default function Projects() {
                     <span>Prazo</span>
                     <strong>{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', {timeZone: 'UTC'}) : 'Sem data'}</strong>
                   </div>
-                  <div className={`status-badge ${project.status?.toLowerCase().replace(' ', '-')}`}>
-                    {project.status}
+                  <div className={`status-badge ${statusMeta.className}`}>
+                    {statusMeta.label}
                   </div>
                 </div>
                 {/* Botão atualizado para Link */}
@@ -170,7 +189,8 @@ export default function Projects() {
                   )}
                 </div>
               </div>
-            ))
+              );
+            })
           ) : (
             <div className="empty-state">
               <p>Nenhum projeto em andamento. Que tal prospectar novos clientes?</p>

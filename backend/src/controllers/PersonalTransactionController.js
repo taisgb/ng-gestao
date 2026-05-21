@@ -4,6 +4,8 @@ const { isDate, isNonEmptyString, isNonNegativeMoney, toMoney } = require('../ut
 const TYPES = ['income', 'expense'];
 const STATUSES = ['expected', 'paid', 'overdue', 'canceled'];
 const SOURCES = ['manual', 'project', 'project_distribution', 'reimbursement', 'renegotiation', 'recurring'];
+const FINANCIAL_SCOPES = ['personal', 'work', 'project'];
+const RECURRENCE_FREQUENCIES = ['monthly', 'weekly', 'yearly'];
 
 function normalizeBoolean(value) {
     return value === true || value === 1 || value === '1' ? 1 : 0;
@@ -17,6 +19,13 @@ function normalizeOriginLabel(source, value) {
     if (source !== 'manual') return null;
     const label = String(value || '').trim();
     return label || null;
+}
+
+function normalizeFinancialScope(body = {}) {
+    if (body.financial_type === 'personal_expense') return 'personal';
+    if (body.project_id || body.source === 'project') return 'project';
+    if (FINANCIAL_SCOPES.includes(body.financial_scope)) return body.financial_scope;
+    return 'personal';
 }
 
 function serializeTransaction(row) {
@@ -90,6 +99,14 @@ function validatePayload(body, partial = false) {
     const hasSource = body.source !== undefined || body.origin_type !== undefined;
     if (hasSource && !SOURCES.includes(normalizeSource(body))) errors.push('Origem invalida.');
 
+    if (body.financial_scope !== undefined && !FINANCIAL_SCOPES.includes(body.financial_scope)) {
+        errors.push('Escopo financeiro invalido.');
+    }
+
+    if (body.recurrence_frequency !== undefined && body.recurrence_frequency && !RECURRENCE_FREQUENCIES.includes(body.recurrence_frequency)) {
+        errors.push('Frequencia de recorrencia invalida.');
+    }
+
     return errors;
 }
 
@@ -103,7 +120,6 @@ async function syncFromProjectFinancialEntry(db, entry) {
     if (['revenue', 'payment_received', 'income', 'received_payment', 'scope_adjustment', 'scope_increase', 'adjustment_positive'].includes(financialType)) type = 'income';
     if (financialType === 'reimbursement') {
         type = 'income';
-        source = 'reimbursement';
     }
 
     if (!type) return null;
@@ -161,6 +177,7 @@ async function syncFromProjectFinancialEntry(db, entry) {
                 payment_method = ?,
                 source = ?,
                 financial_type = ?,
+                financial_scope = ?,
                 project_id = ?,
                 team_id = ?,
                 notes = ?,
@@ -181,6 +198,7 @@ async function syncFromProjectFinancialEntry(db, entry) {
             entry.payment_method || null,
             source,
             financialType,
+            'project',
             entry.project_id || null,
             entry.team_id || null,
             entry.notes || null,
@@ -193,9 +211,9 @@ async function syncFromProjectFinancialEntry(db, entry) {
         INSERT INTO personal_transactions (
             user_id, type, description, category, amount, gross_amount, own_amount, transfer_amount,
             date, payment_due_date, paid_at, status, payment_method, source, origin_label, financial_type,
-            project_id, team_id, project_financial_entry_id, notes, is_recurring, archived, updated_at
+            financial_scope, project_id, team_id, project_financial_entry_id, notes, is_recurring, archived, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
     `, [
         entry.user_id,
         type,
@@ -213,6 +231,7 @@ async function syncFromProjectFinancialEntry(db, entry) {
         source,
         null,
         financialType,
+        'project',
         entry.project_id || null,
         entry.team_id || null,
         entry.id,
@@ -230,7 +249,7 @@ module.exports = {
 
     async index(req, res) {
         try {
-            const { type, status, category, month, year, source, project_id, from, to } = req.query;
+            const { type, status, category, month, year, source, project_id, from, to, financial_scope, financial_type, is_recurring } = req.query;
             const db = await connectDb();
 
             let query = 'SELECT * FROM personal_transactions WHERE user_id = ? AND archived = 0';
@@ -255,6 +274,18 @@ module.exports = {
             if (project_id) {
                 query += ' AND project_id = ?';
                 params.push(project_id);
+            }
+            if (financial_scope) {
+                query += ' AND financial_scope = ?';
+                params.push(financial_scope);
+            }
+            if (financial_type) {
+                query += ' AND financial_type = ?';
+                params.push(financial_type);
+            }
+            if (is_recurring) {
+                query += ' AND is_recurring = ?';
+                params.push(normalizeBoolean(is_recurring));
             }
             if (month && year) {
                 query += " AND strftime('%m', COALESCE(payment_due_date, date)) = ? AND strftime('%Y', COALESCE(payment_due_date, date)) = ?";
@@ -287,6 +318,12 @@ module.exports = {
             const db = await connectDb();
             const source = normalizeSource(req.body);
             const originLabel = normalizeOriginLabel(source, req.body.origin_label);
+            const financialType = req.body.financial_type || (req.body.type === 'expense' ? 'personal_expense' : null);
+            const financialScope = normalizeFinancialScope({
+                ...req.body,
+                source,
+                financial_type: financialType
+            });
             const grossAmount = req.body.gross_amount === undefined || req.body.gross_amount === null || req.body.gross_amount === ''
                 ? toMoney(req.body.amount)
                 : toMoney(req.body.gross_amount);
@@ -294,9 +331,9 @@ module.exports = {
                 INSERT INTO personal_transactions (
                     user_id, type, description, category, amount, gross_amount, own_amount, transfer_amount,
                     date, payment_due_date, paid_at, status, payment_method, source, origin_label,
-                    financial_type, project_id, team_id, notes, is_recurring, archived, updated_at
+                    financial_type, financial_scope, recurrence_frequency, project_id, team_id, notes, is_recurring, archived, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
             `, [
                 req.userId,
                 req.body.type,
@@ -313,8 +350,10 @@ module.exports = {
                 req.body.payment_method || null,
                 source,
                 originLabel,
-                req.body.financial_type || null,
-                req.body.project_id || null,
+                financialType,
+                financialScope,
+                req.body.recurrence_frequency || null,
+                financialScope === 'personal' ? null : req.body.project_id || null,
                 req.body.team_id || null,
                 req.body.notes || null,
                 normalizeBoolean(req.body.is_recurring)
@@ -343,6 +382,17 @@ module.exports = {
             const nextOriginLabel = req.body.origin_label !== undefined || nextSource !== transaction.source
                 ? normalizeOriginLabel(nextSource, req.body.origin_label)
                 : transaction.origin_label || null;
+            const nextFinancialType = req.body.financial_type === undefined
+                ? transaction.financial_type
+                : req.body.financial_type || null;
+            const nextFinancialScope = req.body.financial_scope !== undefined || req.body.financial_type !== undefined || req.body.project_id !== undefined || nextSource !== transaction.source
+                ? normalizeFinancialScope({
+                    ...transaction,
+                    ...req.body,
+                    source: nextSource,
+                    financial_type: nextFinancialType
+                })
+                : transaction.financial_scope || 'personal';
 
             await db.run(`
                 UPDATE personal_transactions
@@ -361,6 +411,8 @@ module.exports = {
                     source = ?,
                     origin_label = ?,
                     financial_type = ?,
+                    financial_scope = ?,
+                    recurrence_frequency = ?,
                     project_id = ?,
                     team_id = ?,
                     notes = ?,
@@ -382,8 +434,10 @@ module.exports = {
                 req.body.payment_method === undefined ? transaction.payment_method : req.body.payment_method || null,
                 nextSource,
                 nextOriginLabel,
-                req.body.financial_type === undefined ? transaction.financial_type : req.body.financial_type || null,
-                req.body.project_id === undefined ? transaction.project_id : req.body.project_id || null,
+                nextFinancialType,
+                nextFinancialScope,
+                req.body.recurrence_frequency === undefined ? transaction.recurrence_frequency : req.body.recurrence_frequency || null,
+                nextFinancialScope === 'personal' ? null : (req.body.project_id === undefined ? transaction.project_id : req.body.project_id || null),
                 req.body.team_id === undefined ? transaction.team_id : req.body.team_id || null,
                 req.body.notes === undefined ? transaction.notes : req.body.notes || null,
                 req.body.is_recurring === undefined ? transaction.is_recurring : normalizeBoolean(req.body.is_recurring),
@@ -457,7 +511,11 @@ module.exports = {
                     SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
                     SUM(CASE WHEN type = 'income' THEN COALESCE(gross_amount, amount) ELSE 0 END) as gross_income,
                     SUM(COALESCE(transfer_amount, CASE WHEN financial_type = 'transfer' THEN amount ELSE 0 END)) as transfers,
-                    SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END) as own_amount
+                    SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END) as own_amount,
+                    SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' THEN amount ELSE 0 END) as personal_expenses,
+                    SUM(CASE WHEN type = 'expense' AND financial_scope IN ('work', 'project') AND COALESCE(financial_type, '') != 'transfer' THEN amount ELSE 0 END) as work_expenses,
+                    SUM(CASE WHEN type = 'expense' AND is_recurring = 1 THEN amount ELSE 0 END) as recurring_expenses,
+                    SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' AND (LOWER(category) LIKE '%cart%' OR LOWER(COALESCE(payment_method, '')) LIKE '%cart%') THEN amount ELSE 0 END) as card_expenses
                 FROM personal_transactions
                 WHERE user_id = ?
                   AND archived = 0
@@ -469,7 +527,9 @@ module.exports = {
                 SELECT
                     SUM(CASE WHEN type = 'income' THEN COALESCE(gross_amount, amount) ELSE 0 END) as gross_income,
                     SUM(COALESCE(transfer_amount, CASE WHEN financial_type = 'transfer' THEN amount ELSE 0 END)) as transfers,
-                    SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END) as own_amount
+                    SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END) as own_amount,
+                    SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' THEN amount ELSE 0 END) as personal_expenses,
+                    SUM(CASE WHEN type = 'expense' AND financial_scope IN ('work', 'project') AND COALESCE(financial_type, '') != 'transfer' THEN amount ELSE 0 END) as work_expenses
                 FROM personal_transactions
                 WHERE user_id = ?
                   AND archived = 0
@@ -497,13 +557,22 @@ module.exports = {
                 bank_balance: bankBalance,
                 total_income_month: income,
                 total_expense_month: expense,
+                personal_expenses: Number(totals.personal_expenses || 0),
+                personal_expenses_month: Number(totals.personal_expenses || 0),
+                work_expenses: Number(totals.work_expenses || 0),
+                recurring_expenses: Number(totals.recurring_expenses || 0),
+                card_expenses: Number(totals.card_expenses || 0),
+                personal_projected_balance: bankBalance + income - Number(totals.personal_expenses || 0),
                 gross_revenue_total: Number(allTotals.gross_income || 0),
                 gross_revenue_period: Number(totals.gross_income || 0),
+                work_gross_revenue: Number(totals.gross_income || 0),
                 expected_month: Number(expected.expected_income || 0),
                 received: Number(expected.received_income || 0),
                 expected_to_receive: Number(expected.pending_income || 0),
                 transfers: Number(totals.transfers || 0),
                 own_amount: Number(totals.own_amount || allTotals.own_amount || 0),
+                work_own_amount: Number(totals.own_amount || allTotals.own_amount || 0),
+                work_operational_expenses: Number(totals.work_expenses || 0),
                 projected_balance: bankBalance + income - expense,
                 total_debt: Number(status.total_debt || 0),
                 current_card_bill: Number(status.credit_card_bill || 0),

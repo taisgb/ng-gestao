@@ -45,6 +45,23 @@ const incomeTypes = ['revenue', 'income', 'scope_increase', 'scope_adjustment', 
 const expenseTypes = ['operational_expense', 'expense', 'operational_cost', 'transfer', 'adjustment_negative'];
 const reimbursementTypes = ['reimbursement'];
 
+const PROJECT_STATUS_META = {
+  pendente: { label: 'Pendente', className: 'pending' },
+  aprovado: { label: 'Aprovado', className: 'approved' },
+  'em andamento': { label: 'Em andamento', className: 'in-progress' },
+  concluido: { label: 'Concluido', className: 'done' },
+  'concluído': { label: 'Concluido', className: 'done' },
+  garantia: { label: 'Garantia', className: 'warranty' }
+};
+
+function getProjectStatusMeta(status) {
+  const normalized = String(status || 'pendente').toLowerCase().trim();
+  return PROJECT_STATUS_META[normalized] || {
+    label: status || 'Pendente',
+    className: normalized.replace(/\s+/g, '-').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  };
+}
+
 function emptyEntryForm() {
   return {
     type: 'revenue',
@@ -74,6 +91,8 @@ function emptyEntryForm() {
 export default function ProjectDetails() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [finance, setFinance] = useState(null);
@@ -89,6 +108,19 @@ export default function ProjectDetails() {
   const [members, setMembers] = useState([]);
   const [notes, setNotes] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [isProjectEditOpen, setIsProjectEditOpen] = useState(false);
+  const [projectForm, setProjectForm] = useState({
+    title: '',
+    description: '',
+    client_id: '',
+    deadline: '',
+    status: 'pendente',
+    base_value: '',
+    warranty_start_date: '',
+    warranty_days: '',
+    scope: 'individual',
+    team_id: ''
+  });
   const [documentForm, setDocumentForm] = useState({
     file_name: '',
     file_url: '',
@@ -119,7 +151,7 @@ export default function ProjectDetails() {
         }
       };
 
-      const [tasksRes, transRes, financeRes, statusesRes, membersRes, notesRes, entriesRes, summaryRes, docsRes] = await Promise.all([
+      const [tasksRes, transRes, financeRes, statusesRes, membersRes, notesRes, entriesRes, summaryRes, docsRes, clientsRes, teamsRes] = await Promise.all([
         safeGet(`/tasks?project_id=${id}`, []),
         safeGet(`/transactions?project_id=${id}`, []),
         safeGet(`/projects/${id}/finance`, null),
@@ -128,7 +160,9 @@ export default function ProjectDetails() {
         safeGet(`/projects/${id}/notes`, []),
         safeGet(`/projects/${id}/financial-entries`, { entries: [], can_edit_global: false }),
         safeGet(`/projects/${id}/finance-summary`, null),
-        safeGet(`/projects/${id}/documents?status=active`, [])
+        safeGet(`/projects/${id}/documents?status=active`, []),
+        safeGet('/clients?status=all', []),
+        safeGet('/teams?status=active', [])
       ]);
 
       setTasks(tasksRes.data);
@@ -148,6 +182,8 @@ export default function ProjectDetails() {
       setCanEditProjectEntries(Boolean(entriesRes.data.can_edit_global));
       setProjectFinanceSummary(summaryRes.data);
       setDocuments(docsRes.data || []);
+      setClients(clientsRes.data || []);
+      setTeams(teamsRes.data || []);
     } catch (err) {
       console.error('Erro ao carregar detalhes do projeto', err.response?.data || err);
       setProject(null);
@@ -242,6 +278,41 @@ export default function ProjectDetails() {
       setFeedback('Divisao financeira atualizada.');
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao salvar divisao financeira.');
+    }
+  }
+
+  function openProjectEdit() {
+    setProjectForm({
+      title: project.title || '',
+      description: project.description || '',
+      client_id: project.client_id || '',
+      deadline: project.deadline || '',
+      status: project.status || 'pendente',
+      base_value: project.base_value ?? '',
+      warranty_start_date: project.warranty_start_date || '',
+      warranty_days: project.warranty_days ?? '',
+      scope: project.scope || 'individual',
+      team_id: project.team_id || ''
+    });
+    setIsProjectEditOpen(true);
+  }
+
+  async function handleSaveProject(e) {
+    e.preventDefault();
+    setFeedback('');
+
+    try {
+      await api.put(`/projects/${id}`, {
+        ...projectForm,
+        team_id: projectForm.scope === 'team' ? projectForm.team_id : null,
+        base_value: projectForm.base_value === '' ? 0 : Number(projectForm.base_value),
+        warranty_days: projectForm.warranty_days === '' ? 0 : Number(projectForm.warranty_days)
+      });
+      setIsProjectEditOpen(false);
+      await loadProjectData();
+      setFeedback('Projeto atualizado.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao atualizar projeto.');
     }
   }
 
@@ -467,7 +538,9 @@ export default function ProjectDetails() {
   const formatCurrency = value =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
   const canTransferOwner = project.access_role === 'owner';
+  const canEditProject = ['owner', 'admin', 'gestor'].includes(project.access_role);
   const canManageProjectMembers = ['owner', 'admin', 'gestor'].includes(project.access_role);
+  const projectStatusMeta = getProjectStatusMeta(project.status);
   const transferCandidates = members.filter(member => member.role !== 'owner');
   const financeKpis = [
     ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
@@ -511,10 +584,102 @@ export default function ProjectDetails() {
             {project.team_name ? <> - Time: <strong>{project.team_name}</strong></> : null}
           </p>
         </div>
-        <div className="project-badge">{project.status}</div>
+        <div className="header-actions">
+          <div className={`project-badge ${projectStatusMeta.className}`}>{projectStatusMeta.label}</div>
+          {canEditProject && (
+            <button type="button" className="btn-edit-project" onClick={openProjectEdit}>
+              Editar projeto
+            </button>
+          )}
+        </div>
       </header>
 
       {feedback && <div className="feedback-message">{feedback}</div>}
+
+      {isProjectEditOpen && (
+        <div className="project-edit-overlay">
+          <form className="project-edit-drawer" onSubmit={handleSaveProject}>
+            <header>
+              <div>
+                <h2>Editar projeto</h2>
+                <p>Atualize dados operacionais, prazo, status e garantia.</p>
+              </div>
+              <button type="button" onClick={() => setIsProjectEditOpen(false)}>x</button>
+            </header>
+
+            <label>
+              Nome do projeto
+              <input value={projectForm.title} onChange={e => setProjectForm({ ...projectForm, title: e.target.value })} required />
+            </label>
+            <label>
+              Descricao
+              <textarea value={projectForm.description} onChange={e => setProjectForm({ ...projectForm, description: e.target.value })} rows="3" />
+            </label>
+            <label>
+              Cliente
+              <select value={projectForm.client_id} onChange={e => setProjectForm({ ...projectForm, client_id: e.target.value })} required>
+                <option value="">Selecione</option>
+                {clients.map(client => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}{client.team_name ? ` - Time: ${client.team_name}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="edit-grid">
+              <label>
+                Prazo
+                <input type="date" value={projectForm.deadline || ''} onChange={e => setProjectForm({ ...projectForm, deadline: e.target.value })} />
+              </label>
+              <label>
+                Status
+                <select value={projectForm.status} onChange={e => setProjectForm({ ...projectForm, status: e.target.value })}>
+                  {statuses.map(status => (
+                    <option key={status.id} value={status.name}>{getProjectStatusMeta(status.name).label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="edit-grid">
+              <label>
+                Valor base
+                <input type="number" step="0.01" value={projectForm.base_value ?? ''} onChange={e => setProjectForm({ ...projectForm, base_value: e.target.value })} disabled={!project.can_edit_financials} />
+              </label>
+              <label>
+                Tipo
+                <select value={projectForm.scope} onChange={e => setProjectForm({ ...projectForm, scope: e.target.value, team_id: e.target.value === 'individual' ? '' : projectForm.team_id })}>
+                  <option value="individual">Individual</option>
+                  <option value="team">De equipe</option>
+                </select>
+              </label>
+            </div>
+            {projectForm.scope === 'team' && (
+              <label>
+                Time vinculado
+                <select value={projectForm.team_id || ''} onChange={e => setProjectForm({ ...projectForm, team_id: e.target.value })} required>
+                  <option value="">Selecione o time</option>
+                  {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
+                </select>
+              </label>
+            )}
+            <div className="edit-grid">
+              <label>
+                Inicio da garantia
+                <input type="date" value={projectForm.warranty_start_date || ''} onChange={e => setProjectForm({ ...projectForm, warranty_start_date: e.target.value })} />
+              </label>
+              <label>
+                Prazo garantia (dias)
+                <input type="number" min="0" step="1" value={projectForm.warranty_days ?? ''} onChange={e => setProjectForm({ ...projectForm, warranty_days: e.target.value })} />
+              </label>
+            </div>
+
+            <div className="drawer-actions">
+              <button type="button" className="btn-cancel" onClick={() => setIsProjectEditOpen(false)}>Cancelar</button>
+              <button type="submit">Salvar alteracoes</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <section className="project-summary">
         <div className="summary-item">
@@ -528,6 +693,10 @@ export default function ProjectDetails() {
         <div className="summary-item">
           <span>Prazo</span>
           <strong>{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Flexivel'}</strong>
+        </div>
+        <div className="summary-item">
+          <span>Garantia</span>
+          <strong>{project.warranty_end_date ? `Ate ${new Date(project.warranty_end_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : 'Sem garantia'}</strong>
         </div>
       </section>
 
@@ -774,14 +943,19 @@ export default function ProjectDetails() {
           <h2>Status do projeto</h2>
           <div className="status-options">
             {statuses.map(status => (
+              (() => {
+                const meta = getProjectStatusMeta(status.name);
+                return (
               <button
                 key={status.id}
                 type="button"
-                className={project.status === status.name ? 'active' : ''}
+                className={`${project.status === status.name ? 'active' : ''} ${meta.className}`}
                 onClick={() => handleStatusChange(status.name)}
               >
-                {status.name}
+                {meta.label}
               </button>
+                );
+              })()
             ))}
           </div>
 
@@ -854,8 +1028,14 @@ export default function ProjectDetails() {
                   checked={String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done'}
                   onChange={() => handleToggleTask(task)}
                 />
-                <span className={String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done' ? 'done' : ''}>{task.title}</span>
-                {(String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done') && <small>Concluida</small>}
+                <div>
+                  <span className={String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done' ? 'done' : ''}>{task.title}</span>
+                  <small>
+                    {task.assigned_name || 'Sem responsavel'}
+                    {task.due_date ? ` - ${new Date(task.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}
+                    {(String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done') ? ' - Concluida' : ''}
+                  </small>
+                </div>
               </div>
             )) : <p className="empty">Nenhuma tarefa criada.</p>}
           </div>

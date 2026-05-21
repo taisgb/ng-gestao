@@ -18,13 +18,34 @@ const emptyTransaction = {
   source: 'manual',
   origin_label: '',
   financial_type: '',
+  financial_scope: 'personal',
+  recurrence_frequency: '',
   notes: '',
   is_recurring: false
 };
 
 const incomeCategories = ['Projeto', 'Servico recorrente', 'Consultoria', 'Distribuicao de projeto', 'Reembolso', 'Outros'];
 const expenseCategories = ['Software', 'Assinaturas', 'Trafego pago', 'Equipamentos', 'Banco/cartao', 'Impostos', 'Hospedagem', 'Plugin', 'Dominio', 'Outros'];
+const personalExpenseCategories = ['Assinaturas', 'Alimentacao', 'Transporte', 'Saude', 'Educacao', 'Moradia', 'Lazer', 'Cartao de credito', 'Academia', 'Impostos', 'Outros'];
 const statusLabels = { expected: 'previsto', paid: 'pago', overdue: 'atrasado', canceled: 'cancelado' };
+const financialTypeLabels = {
+  revenue: 'Receita / NF',
+  payment_received: 'Pagamento recebido',
+  transfer: 'Repasse',
+  operational_expense: 'Despesa operacional',
+  reimbursement: 'Reembolso',
+  personal_expense: 'Despesa pessoal'
+};
+const scopeLabels = {
+  personal: 'Pessoal',
+  work: 'Trabalho',
+  project: 'Projeto'
+};
+const recurrenceLabels = {
+  monthly: 'mensal',
+  weekly: 'semanal',
+  yearly: 'anual'
+};
 const sourceLabels = {
   project: 'projeto',
   project_distribution: 'distribuicao',
@@ -54,7 +75,10 @@ export default function PersonalFinance() {
     type: '',
     status: '',
     category: '',
-    source: ''
+    source: '',
+    financial_scope: '',
+    financial_type: '',
+    is_recurring: ''
   });
   const [transactionForm, setTransactionForm] = useState(emptyTransaction);
   const [statusForm, setStatusForm] = useState({
@@ -104,13 +128,25 @@ export default function PersonalFinance() {
     loadData();
   }, [loadData]);
 
-  const categories = transactionForm.type === 'income' ? incomeCategories : expenseCategories;
+  const categories = transactionForm.financial_type === 'personal_expense'
+    ? personalExpenseCategories
+    : transactionForm.type === 'income'
+      ? incomeCategories
+      : expenseCategories;
   const incomeRows = useMemo(() => transactions.filter(item => item.type === 'income'), [transactions]);
   const expenseRows = useMemo(() => transactions.filter(item => item.type === 'expense'), [transactions]);
   const isManualOrigin = transactionForm.source === 'manual';
 
   function formatSource(item) {
     return item.origin_label || sourceLabels[item.source] || item.source || '-';
+  }
+
+  function formatFinancialType(item) {
+    return financialTypeLabels[item.financial_type] || (item.type === 'expense' ? 'Despesa' : 'Receita');
+  }
+
+  function formatScope(item) {
+    return scopeLabels[item.financial_scope] || 'Pessoal';
   }
 
   function resetTransactionForm() {
@@ -136,6 +172,8 @@ export default function PersonalFinance() {
       source: item.source || 'manual',
       origin_label: item.origin_label || '',
       financial_type: item.financial_type || '',
+      financial_scope: item.financial_scope || 'personal',
+      recurrence_frequency: item.recurrence_frequency || '',
       notes: item.notes || '',
       is_recurring: Boolean(item.is_recurring)
     });
@@ -154,6 +192,8 @@ export default function PersonalFinance() {
       payment_due_date: transactionForm.payment_due_date || null,
       paid_at: transactionForm.paid_at || null,
       financial_type: transactionForm.financial_type || null,
+      financial_scope: transactionForm.financial_scope || 'personal',
+      recurrence_frequency: transactionForm.is_recurring ? transactionForm.recurrence_frequency || 'monthly' : null,
       origin_label: transactionForm.source === 'manual' ? transactionForm.origin_label.trim() : '',
       is_recurring: transactionForm.is_recurring ? 1 : 0
     };
@@ -247,6 +287,7 @@ export default function PersonalFinance() {
           <span>Data</span>
           <span>Descricao</span>
           <span>Categoria</span>
+          <span>Tipo/Escopo</span>
           <span>{kind === 'income' ? 'Origem' : 'Origem/Forma'}</span>
           <span>Status</span>
           <span>Valor</span>
@@ -257,6 +298,10 @@ export default function PersonalFinance() {
             <span>{formatDate(item.date)}</span>
             <strong>{item.description}</strong>
             <span>{item.category}</span>
+            <span className="scope-cell">
+              <span className={`scope-badge ${item.financial_scope || 'personal'}`}>{formatScope(item)}</span>
+              <small>{formatFinancialType(item)}{item.is_recurring ? ` - ${recurrenceLabels[item.recurrence_frequency] || 'recorrente'}` : ''}</small>
+            </span>
             <span>{kind === 'income' ? formatSource(item) : item.payment_method || formatSource(item)}</span>
             <span className={`status ${item.status}`}>{statusLabels[item.status] || item.status}</span>
             <strong>{formatCurrency(item.amount)}</strong>
@@ -289,10 +334,13 @@ export default function PersonalFinance() {
         <div className="summary-card income"><span>Faturamento total</span><strong>{formatCurrency(summary?.gross_revenue_total)}</strong></div>
         <div className="summary-card income"><span>Previsto no mes</span><strong>{formatCurrency(summary?.expected_month)}</strong></div>
         <div className="summary-card income"><span>Recebido</span><strong>{formatCurrency(summary?.received)}</strong></div>
-        <div className="summary-card debt"><span>Despesas</span><strong>{formatCurrency(summary?.total_expense_month)}</strong></div>
+        <div className="summary-card debt"><span>Despesas pessoais</span><strong>{formatCurrency(summary?.personal_expenses)}</strong></div>
+        <div className="summary-card debt"><span>Despesas trabalho</span><strong>{formatCurrency(summary?.work_expenses)}</strong></div>
         <div className="summary-card debt"><span>Repasses</span><strong>{formatCurrency(summary?.transfers)}</strong></div>
         <div className="summary-card fixed"><span>Minha parte</span><strong>{formatCurrency(summary?.own_amount)}</strong></div>
         <div className="summary-card fixed"><span>Saldo previsto</span><strong>{formatCurrency(summary?.projected_balance)}</strong></div>
+        <div className="summary-card fixed"><span>Saldo pessoal previsto</span><strong>{formatCurrency(summary?.personal_projected_balance)}</strong></div>
+        <div className="summary-card debt"><span>Recorrentes</span><strong>{formatCurrency(summary?.recurring_expenses)}</strong></div>
         <div className="summary-card debt"><span>Divida total</span><strong>{formatCurrency(summary?.total_debt ?? dashboard?.total_debt)}</strong></div>
         <div className="summary-card card-bill"><span>Fatura atual</span><strong>{formatCurrency(summary?.current_card_bill ?? dashboard?.current_card_bill)}</strong></div>
         <div className="summary-card fixed"><span>Parcelas fixas</span><strong>{formatCurrency(summary?.fixed_installments ?? dashboard?.fixed_debts_month)}</strong></div>
@@ -306,10 +354,29 @@ export default function PersonalFinance() {
           ))}
         </select>
         <input value={filters.year} onChange={e => setFilters({ ...filters, year: e.target.value })} placeholder="Ano" />
+        <select value={filters.financial_scope} onChange={e => setFilters({ ...filters, financial_scope: e.target.value })}>
+          <option value="">Todos os escopos</option>
+          <option value="personal">Pessoal</option>
+          <option value="work">Trabalho</option>
+          <option value="project">Projetos</option>
+        </select>
         <select value={filters.type} onChange={e => setFilters({ ...filters, type: e.target.value })}>
           <option value="">Todos os tipos</option>
           <option value="income">Receitas</option>
           <option value="expense">Despesas</option>
+        </select>
+        <select value={filters.financial_type} onChange={e => setFilters({ ...filters, financial_type: e.target.value })}>
+          <option value="">Todos financeiros</option>
+          <option value="personal_expense">Despesas pessoais</option>
+          <option value="transfer">Repasses</option>
+          <option value="revenue">Receita / NF</option>
+          <option value="payment_received">Pagamento recebido</option>
+          <option value="operational_expense">Despesa operacional</option>
+          <option value="reimbursement">Reembolso</option>
+        </select>
+        <select value={filters.is_recurring} onChange={e => setFilters({ ...filters, is_recurring: e.target.value })}>
+          <option value="">Todos</option>
+          <option value="1">Recorrentes</option>
         </select>
         <select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
           <option value="">Todos os status</option>
@@ -327,7 +394,7 @@ export default function PersonalFinance() {
           <h2>{editing ? 'Editar lancamento' : 'Novo lancamento'}</h2>
           <form onSubmit={handleSaveTransaction}>
             <input value={transactionForm.description} onChange={e => setTransactionForm({ ...transactionForm, description: e.target.value })} placeholder="Descricao" required />
-            <select value={transactionForm.type} onChange={e => setTransactionForm({ ...transactionForm, type: e.target.value, category: e.target.value === 'income' ? 'Projeto' : 'Software' })}>
+            <select value={transactionForm.type} onChange={e => setTransactionForm({ ...transactionForm, type: e.target.value, category: e.target.value === 'income' ? 'Projeto' : 'Software', financial_type: e.target.value === 'income' ? 'revenue' : 'personal_expense', financial_scope: e.target.value === 'income' ? 'work' : 'personal' })}>
               <option value="income">Receita</option>
               <option value="expense">Despesa</option>
             </select>
@@ -344,13 +411,31 @@ export default function PersonalFinance() {
             <select value={transactionForm.status} onChange={e => setTransactionForm({ ...transactionForm, status: e.target.value })}>
               {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
-            <select value={transactionForm.financial_type} onChange={e => setTransactionForm({ ...transactionForm, financial_type: e.target.value })}>
+            <select
+              value={transactionForm.financial_type}
+              onChange={e => {
+                const financialType = e.target.value;
+                setTransactionForm({
+                  ...transactionForm,
+                  financial_type: financialType,
+                  type: ['personal_expense', 'operational_expense', 'transfer'].includes(financialType) ? 'expense' : 'income',
+                  financial_scope: financialType === 'personal_expense' ? 'personal' : financialType === 'operational_expense' ? transactionForm.financial_scope : 'work',
+                  category: financialType === 'personal_expense' ? 'Assinaturas' : transactionForm.category
+                });
+              }}
+            >
               <option value="">Tipo financeiro</option>
               <option value="revenue">Receita / NF</option>
               <option value="payment_received">Pagamento recebido</option>
               <option value="transfer">Repasse</option>
               <option value="operational_expense">Despesa operacional</option>
               <option value="reimbursement">Reembolso</option>
+              <option value="personal_expense">Despesa pessoal</option>
+            </select>
+            <select value={transactionForm.financial_scope} onChange={e => setTransactionForm({ ...transactionForm, financial_scope: e.target.value })}>
+              <option value="personal">Pessoal</option>
+              <option value="work">Trabalho</option>
+              <option value="project">Projeto</option>
             </select>
             <input value={transactionForm.payment_method} onChange={e => setTransactionForm({ ...transactionForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
             <select
@@ -376,6 +461,14 @@ export default function PersonalFinance() {
               <input type="checkbox" checked={transactionForm.is_recurring} onChange={e => setTransactionForm({ ...transactionForm, is_recurring: e.target.checked })} />
               Recorrente
             </label>
+            {transactionForm.is_recurring && (
+              <select value={transactionForm.recurrence_frequency} onChange={e => setTransactionForm({ ...transactionForm, recurrence_frequency: e.target.value })}>
+                <option value="">Frequencia</option>
+                <option value="monthly">Mensal</option>
+                <option value="weekly">Semanal</option>
+                <option value="yearly">Anual</option>
+              </select>
+            )}
             <button type="submit">{editing ? 'Salvar alteracoes' : 'Adicionar lancamento'}</button>
             {editing && <button type="button" className="btn-cancel" onClick={resetTransactionForm}>Cancelar edicao</button>}
           </form>

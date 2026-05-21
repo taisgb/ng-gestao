@@ -64,6 +64,29 @@ async function ensureFinancialShares(db, projectId) {
     return members;
 }
 
+function calculateWarrantyEndDate(startDate, days) {
+    if (!startDate || !days) return null;
+    const totalDays = Number(days);
+    if (!Number.isInteger(totalDays) || totalDays <= 0) return null;
+    const date = new Date(`${startDate}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + totalDays);
+    return date.toISOString().split('T')[0];
+}
+
+function toDateOnly(value) {
+    if (!value) return null;
+    if (value instanceof Date) return value.toISOString().split('T')[0];
+    const text = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+    return null;
+}
+
+function diffDays(fromDate, toDate) {
+    const from = new Date(`${fromDate}T00:00:00Z`);
+    const to = new Date(`${toDate}T00:00:00Z`);
+    return Math.ceil((to.getTime() - from.getTime()) / 86400000);
+}
+
 module.exports = {
     async create(req, res) {
         try {
@@ -76,6 +99,8 @@ module.exports = {
                 value,
                 payment_type,
                 deadline,
+                warranty_start_date,
+                warranty_days,
                 status,
                 scope = 'individual',
                 team_id,
@@ -92,6 +117,14 @@ module.exports = {
 
             if (deadline && !isDate(deadline)) {
                 return res.status(400).json({ error: 'Prazo invalido.' });
+            }
+
+            if (warranty_start_date && !isDate(warranty_start_date)) {
+                return res.status(400).json({ error: 'Data inicial da garantia invalida.' });
+            }
+
+            if (warranty_days !== undefined && warranty_days !== '' && (!Number.isInteger(Number(warranty_days)) || Number(warranty_days) < 0)) {
+                return res.status(400).json({ error: 'Prazo de garantia invalido.' });
             }
 
             if (projectValue !== undefined && !isNonNegativeMoney(projectValue)) {
@@ -146,8 +179,11 @@ module.exports = {
             }
 
             const result = await db.run(`
-                INSERT INTO projects (client_id, team_id, scope, title, description, status, base_value, payment_type, deadline, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO projects (
+                    client_id, team_id, scope, title, description, status, base_value, payment_type,
+                    deadline, warranty_start_date, warranty_days, warranty_end_date, user_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 client_id,
                 projectTeamId,
@@ -158,6 +194,9 @@ module.exports = {
                 toMoney(projectValue),
                 payment_type || null,
                 deadline || null,
+                warranty_start_date || null,
+                Number(warranty_days || 0),
+                calculateWarrantyEndDate(warranty_start_date, Number(warranty_days || 0)),
                 req.userId
             ]);
 
@@ -199,7 +238,7 @@ module.exports = {
             params.push(req.userId);
 
             const projects = await db.all(`
-                SELECT 
+                SELECT
                     p.*, 
                     clients.name as client_name,
                     teams.name as team_name,
@@ -249,6 +288,70 @@ module.exports = {
         } catch (error) {
             console.error('[ProjectController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar projetos.' });
+        }
+    },
+
+    async warrantyAlerts(req, res) {
+        try {
+            const db = await connectDb();
+            const today = new Date().toISOString().split('T')[0];
+            const daysAhead = Math.min(Math.max(Number(req.query.days || 15), 1), 60);
+            const limit = Math.min(Math.max(Number(req.query.limit || 5), 1), 20);
+
+            const projects = await db.all(`
+                SELECT
+                    p.id,
+                    p.title,
+                    p.status,
+                    p.warranty_start_date,
+                    p.warranty_days,
+                    p.warranty_end_date,
+                    p.team_id,
+                    p.scope,
+                    c.name as client_name,
+                    t.name as team_name,
+                    pm.role as project_role,
+                    tm.role as team_role
+                FROM projects p
+                JOIN clients c ON c.id = p.client_id
+                LEFT JOIN teams t ON t.id = p.team_id
+                LEFT JOIN project_members pm
+                    ON pm.project_id = p.id
+                    AND pm.user_id = ?
+                LEFT JOIN team_members tm
+                    ON tm.team_id = p.team_id
+                    AND tm.user_id = ?
+                    AND tm.status = 'active'
+                WHERE COALESCE(p.archived, 0) = 0
+                  AND p.warranty_end_date IS NOT NULL
+                  AND (
+                    p.user_id = ?
+                    OR pm.user_id IS NOT NULL
+                    OR (p.scope = 'team' AND tm.role IN ('owner', 'admin', 'gestor'))
+                  )
+                ORDER BY p.warranty_end_date ASC, p.id DESC
+            `, [req.userId, req.userId, req.userId]);
+
+            const alerts = (projects || [])
+                .map(project => {
+                    const endDate = toDateOnly(project.warranty_end_date);
+                    const days_remaining = diffDays(today, endDate);
+
+                    return {
+                        ...project,
+                        warranty_start_date: toDateOnly(project.warranty_start_date),
+                        warranty_end_date: endDate,
+                        days_remaining,
+                        alert_level: days_remaining < 0 ? 'overdue' : 'soon'
+                    };
+                })
+                .filter(project => project.days_remaining <= daysAhead)
+                .slice(0, limit);
+
+            return res.json(alerts);
+        } catch (error) {
+            console.error('[ProjectController.warrantyAlerts]', error);
+            return res.status(500).json({ error: 'Erro ao buscar garantias.' });
         }
     },
 
@@ -302,7 +405,23 @@ module.exports = {
     async update(req, res) {
         try {
             const { id } = req.params;
-            const { title, description, status, base_value, payment_type, payment_status, amount_paid, deadline } = req.body;
+            const {
+                title,
+                name,
+                description,
+                client_id,
+                status,
+                base_value,
+                value,
+                payment_type,
+                payment_status,
+                amount_paid,
+                deadline,
+                scope,
+                team_id,
+                warranty_start_date,
+                warranty_days
+            } = req.body;
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
@@ -319,7 +438,8 @@ module.exports = {
                 return res.status(403).json({ error: 'Membros podem alterar apenas o status operacional do projeto.' });
             }
 
-            if (title !== undefined && !isNonEmptyString(title, 160)) {
+            const nextTitle = title !== undefined ? title : name;
+            if (nextTitle !== undefined && !isNonEmptyString(nextTitle, 160)) {
                 return res.status(400).json({ error: 'Titulo invalido.' });
             }
 
@@ -327,12 +447,44 @@ module.exports = {
                 return res.status(400).json({ error: 'Prazo invalido.' });
             }
 
-            if (base_value !== undefined && !isNonNegativeMoney(base_value)) {
+            const nextBaseValue = base_value !== undefined ? base_value : value;
+            if (nextBaseValue !== undefined && !isNonNegativeMoney(nextBaseValue)) {
                 return res.status(400).json({ error: 'Valor do projeto invalido.' });
             }
 
             if (amount_paid !== undefined && !isNonNegativeMoney(amount_paid)) {
                 return res.status(400).json({ error: 'Valor pago invalido.' });
+            }
+
+            if (warranty_start_date !== undefined && warranty_start_date !== null && warranty_start_date !== '' && !isDate(warranty_start_date)) {
+                return res.status(400).json({ error: 'Data inicial da garantia invalida.' });
+            }
+
+            if (warranty_days !== undefined && warranty_days !== null && warranty_days !== '' && (!Number.isInteger(Number(warranty_days)) || Number(warranty_days) < 0)) {
+                return res.status(400).json({ error: 'Prazo de garantia invalido.' });
+            }
+
+            let nextClientId = project.client_id;
+            if (client_id !== undefined) {
+                const client = await db.get('SELECT id, user_id, team_id FROM clients WHERE id = ? AND archived = 0', [client_id]);
+                if (!client) return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+
+                const canUseClient = client.user_id === req.userId
+                    || (client.team_id && await canViewTeamResource(db, req.userId, client.team_id));
+                if (!canUseClient) return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+                nextClientId = Number(client_id);
+            }
+
+            const nextScope = scope !== undefined ? (scope === 'team' ? 'team' : 'individual') : project.scope || 'individual';
+            let nextTeamId = project.team_id || null;
+            if (nextScope === 'individual') {
+                nextTeamId = null;
+            } else if (team_id !== undefined || scope !== undefined) {
+                nextTeamId = Number(team_id || project.team_id);
+                if (!nextTeamId) return res.status(400).json({ error: 'Selecione o time do projeto.' });
+                if (!await canEditTeamResource(db, req.userId, nextTeamId)) {
+                    return res.status(403).json({ error: 'Sem permissao para vincular este projeto ao time selecionado.' });
+                }
             }
 
             if (status) {
@@ -347,28 +499,41 @@ module.exports = {
                 }
             }
 
-            await db.run(`
-                UPDATE projects 
-                SET title = COALESCE(?, title),
-                    description = COALESCE(?, description),
-                    status = COALESCE(?, status),
-                    base_value = COALESCE(?, base_value),
-                    payment_type = COALESCE(?, payment_type),
-                    payment_status = COALESCE(?, payment_status),
-                    amount_paid = COALESCE(?, amount_paid),
-                    deadline = COALESCE(?, deadline)
-                WHERE id = ?
-            `, [
-                title === undefined ? null : title.trim(),
-                description === undefined ? null : description,
-                status,
-                base_value === undefined ? null : toMoney(base_value),
-                payment_type,
-                payment_status,
-                amount_paid === undefined ? null : toMoney(amount_paid),
-                deadline === '' ? null : deadline,
-                id
-            ]);
+            const updates = [];
+            const params = [];
+            function addField(field, value) {
+                updates.push(`${field} = ?`);
+                params.push(value);
+            }
+
+            if (nextTitle !== undefined) addField('title', nextTitle.trim());
+            if (description !== undefined) addField('description', description || null);
+            if (client_id !== undefined) addField('client_id', nextClientId);
+            if (status !== undefined) addField('status', status);
+            if (nextBaseValue !== undefined) addField('base_value', toMoney(nextBaseValue));
+            if (payment_type !== undefined) addField('payment_type', payment_type || null);
+            if (payment_status !== undefined) addField('payment_status', payment_status || null);
+            if (amount_paid !== undefined) addField('amount_paid', toMoney(amount_paid));
+            if (deadline !== undefined) addField('deadline', deadline || null);
+            if (scope !== undefined) addField('scope', nextScope);
+            if (team_id !== undefined || scope !== undefined) addField('team_id', nextTeamId);
+
+            const hasWarrantyChange = warranty_start_date !== undefined || warranty_days !== undefined;
+            if (hasWarrantyChange) {
+                const start = warranty_start_date === undefined ? project.warranty_start_date : warranty_start_date || null;
+                const days = warranty_days === undefined ? Number(project.warranty_days || 0) : Number(warranty_days || 0);
+                addField('warranty_start_date', start);
+                addField('warranty_days', days);
+                addField('warranty_end_date', calculateWarrantyEndDate(start, days));
+            }
+
+            if (updates.length === 0) return res.json({ message: 'Nenhuma alteracao enviada.' });
+
+            await db.run(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`, [...params, id]);
+
+            await logActivity(db, req.userId, 'update_project', 'project', id, {
+                fields: requestedFields
+            });
 
             return res.json({ message: 'Projeto atualizado.' });
         } catch (error) {

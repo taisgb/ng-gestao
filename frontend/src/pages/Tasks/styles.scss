@@ -234,7 +234,7 @@ $line: #ece7df;
 
   .task-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 190px 310px;
+    grid-template-columns: minmax(0, 1fr) 190px minmax(250px, 320px);
     gap: 12px;
     padding: 14px;
     border-left: 5px solid $leaf-green;
@@ -301,6 +301,109 @@ $line: #ece7df;
     }
   }
 
+  .task-modal-overlay {
+    align-items: center;
+    background: rgba(17, 24, 20, 0.58);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 18px;
+    position: fixed;
+    z-index: 50;
+  }
+
+  .task-edit-modal {
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(34, 28, 22, 0.22);
+    max-height: 92vh;
+    max-width: 760px;
+    overflow: auto;
+    padding: 18px;
+    width: min(760px, 100%);
+
+    header {
+      align-items: flex-start;
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+
+      span {
+        color: #777;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        color: $earth-brown;
+        font-size: 1.35rem;
+        margin-top: 4px;
+      }
+
+      button {
+        background: $sand-bg;
+        border: 1px solid $line;
+        border-radius: 8px;
+        color: $earth-brown;
+        padding: 8px 12px;
+      }
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      color: $earth-brown;
+      display: grid;
+      font-size: 0.82rem;
+      font-weight: 800;
+      gap: 6px;
+    }
+
+    input,
+    select,
+    textarea {
+      background: $sand-bg;
+      border: 1px solid $line;
+      border-radius: 8px;
+      color: $earth-brown;
+      font: inherit;
+      min-width: 0;
+      padding: 10px;
+    }
+
+    .modal-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 4px;
+
+      button {
+        border: 1px solid $line;
+        border-radius: 8px;
+        font-weight: 800;
+        padding: 10px 14px;
+
+        &:last-child {
+          background: $leaf-green;
+          border-color: $leaf-green;
+          color: #fff;
+        }
+      }
+    }
+  }
+
   .empty-msg {
     color: #888;
   }
@@ -326,11 +429,61 @@ $line: #ece7df;
     .calendar-panel {
       min-height: 420px;
     }
+
+    .task-edit-modal .modal-grid {
+      grid-template-columns: 1fr;
+    }
   }
 }
 
 body[data-theme='dark'] {
   .tasks-container {
+    .task-edit-modal {
+      background: #18211c;
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+
+      header {
+        span {
+          color: #c8c1b7;
+        }
+
+        h2 {
+          color: #f4f1ea;
+        }
+
+        button {
+          background: #162019;
+          border-color: rgba(255, 255, 255, 0.12);
+          color: #f4f1ea;
+        }
+      }
+
+      label {
+        color: #f4f1ea;
+      }
+
+      input,
+      select,
+      textarea {
+        background: #162019;
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #f4f1ea;
+      }
+
+      .modal-actions button {
+        background: #162019;
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #f4f1ea;
+
+        &:last-child {
+          background: #6d7a5f;
+          border-color: #6d7a5f;
+          color: #fff;
+        }
+      }
+    }
+
     .calendar-panel {
       background: #18211c;
       border-color: rgba(255, 255, 255, 0.1);

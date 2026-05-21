@@ -232,6 +232,16 @@ $line: #ece7df;
       gap: 8px;
       margin-bottom: 12px;
 
+      .readonly-note {
+        background: $sand-bg;
+        border: 1px dashed $line;
+        border-radius: 8px;
+        color: #777;
+        grid-column: 1 / -1;
+        margin: 0;
+        padding: 12px;
+      }
+
       input,
       select {
         min-width: 0;
@@ -340,6 +350,11 @@ $line: #ece7df;
 
     button {
       color: #c24141;
+
+      &:disabled {
+        color: #aaa;
+        cursor: not-allowed;
+      }
     }
   }
 

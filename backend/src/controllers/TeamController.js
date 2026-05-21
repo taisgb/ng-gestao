@@ -113,7 +113,66 @@ module.exports = {
     },
 
     async destroy(req, res) {
-        return module.exports.archive(req, res);
+        try {
+            const { id } = req.params;
+            const db = await connectDb();
+
+            if (!await canManageTeamMembers(db, req.userId, id)) {
+                return res.status(403).json({ error: 'Apenas owner/admin podem excluir o time.' });
+            }
+
+            const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+            if (!team) return res.status(404).json({ error: 'Time nao encontrado.' });
+
+            const activeProjects = await db.get(
+                'SELECT COUNT(*) as total FROM projects WHERE team_id = ? AND COALESCE(archived, 0) = 0',
+                [id]
+            );
+            const activeMembers = await db.get(`
+                SELECT COUNT(*) as total
+                FROM team_members
+                WHERE team_id = ?
+                  AND status = 'active'
+                  AND role != 'owner'
+            `, [id]);
+            const pendingFinancial = await db.get(`
+                SELECT COUNT(*) as total
+                FROM project_financial_entries
+                WHERE team_id = ?
+                  AND COALESCE(archived, 0) = 0
+                  AND status IN ('pending', 'expected')
+            `, [id]);
+
+            const blockers = {
+                active_projects: Number(activeProjects.total || 0),
+                active_members: Number(activeMembers.total || 0),
+                pending_financial_entries: Number(pendingFinancial.total || 0)
+            };
+
+            if (blockers.active_projects || blockers.active_members || blockers.pending_financial_entries) {
+                return res.status(409).json({
+                    error: 'Nao e possivel excluir este time com projetos ativos, membros ativos ou financeiro pendente. Arquive o time ou resolva as pendencias primeiro.',
+                    blockers
+                });
+            }
+
+            await db.run("UPDATE projects SET team_id = NULL, scope = 'individual' WHERE team_id = ?", [id]);
+            await db.run("UPDATE clients SET team_id = NULL, scope = 'individual' WHERE team_id = ?", [id]);
+            await db.run("UPDATE services SET team_id = NULL, scope = 'individual' WHERE team_id = ?", [id]);
+            await db.run("UPDATE tasks SET team_id = NULL, scope = 'individual' WHERE team_id = ?", [id]);
+            await db.run('UPDATE documents SET team_id = NULL WHERE team_id = ?', [id]);
+            await db.run('UPDATE personal_transactions SET team_id = NULL WHERE team_id = ?', [id]);
+            await db.run('UPDATE project_financial_entries SET team_id = NULL WHERE team_id = ?', [id]);
+            await db.run('DELETE FROM team_invites WHERE team_id = ?', [id]);
+            await db.run('DELETE FROM team_members WHERE team_id = ?', [id]);
+            await db.run('DELETE FROM teams WHERE id = ?', [id]);
+
+            await logActivity(db, req.userId, 'delete', 'team', id, { blockers });
+            return res.json({ message: 'Time excluido.' });
+        } catch (error) {
+            console.error('[TeamController.destroy]', error);
+            return res.status(500).json({ error: 'Erro ao excluir time.' });
+        }
     },
 
     async archive(req, res) {
@@ -274,6 +333,34 @@ module.exports = {
             const member = await db.get('SELECT * FROM team_members WHERE id = ? AND team_id = ?', [memberId, id]);
             if (!member) return res.status(404).json({ error: 'Membro nao encontrado.' });
             if (member.role === 'owner') return res.status(403).json({ error: 'Nao e permitido remover owner.' });
+
+            if (member.user_id) {
+                const ownedProjects = await db.get(`
+                    SELECT COUNT(*) as total
+                    FROM projects
+                    WHERE team_id = ?
+                      AND user_id = ?
+                      AND COALESCE(archived, 0) = 0
+                `, [id, member.user_id]);
+
+                if (Number(ownedProjects.total || 0) > 0) {
+                    return res.status(409).json({ error: 'Este membro e dono de projeto ativo do time. Transfira o projeto antes de remover.' });
+                }
+
+                await db.run(`
+                    DELETE FROM project_members
+                    WHERE user_id = ?
+                      AND project_id IN (SELECT id FROM projects WHERE team_id = ?)
+                `, [member.user_id, id]);
+
+                await db.run(`
+                    UPDATE tasks
+                    SET assigned_to = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE team_id = ?
+                      AND assigned_to = ?
+                `, [id, member.user_id]);
+            }
 
             await db.run("UPDATE team_members SET status = 'removed', updated_at = CURRENT_TIMESTAMP WHERE id = ?", [memberId]);
             await logActivity(db, req.userId, 'remove_member', 'team', id, { member_id: memberId });

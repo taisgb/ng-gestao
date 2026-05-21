@@ -5,6 +5,8 @@ const {
     canEditDocument,
     canEditTeamResource,
     canShareDocument,
+    canEditInvoice,
+    canViewInvoice,
     canViewDocument,
     canViewProjectFinancials,
     canViewTeamResource,
@@ -29,6 +31,10 @@ function normalizeStatus(status) {
     return ['active', 'archived', 'all'].includes(status) ? status : 'active';
 }
 
+function normalizeSearch(value) {
+    return String(value || '').trim().slice(0, 120);
+}
+
 async function getClientAccess(db, clientId, userId) {
     if (!clientId) return null;
     const client = await db.get('SELECT * FROM clients WHERE id = ?', [clientId]);
@@ -45,9 +51,21 @@ async function getClientAccess(db, clientId, userId) {
 
 async function getInvoiceAccess(db, invoiceId, userId) {
     if (!invoiceId) return null;
-    const invoice = await db.get('SELECT * FROM invoices WHERE id = ?', [invoiceId]);
+    const invoice = await db.get(`
+        SELECT i.*, p.team_id
+        FROM invoices i
+        LEFT JOIN projects p ON p.id = i.project_id
+        WHERE i.id = ?
+    `, [invoiceId]);
     if (!invoice) return null;
-    return invoice.user_id === userId ? { can_view: true, can_edit: true, project_id: invoice.project_id || null } : null;
+    const canView = await canViewInvoice(db, userId, invoice);
+    if (!canView) return null;
+    return {
+        can_view: true,
+        can_edit: await canEditInvoice(db, userId, invoice),
+        project_id: invoice.project_id || null,
+        team_id: invoice.team_id || null
+    };
 }
 
 async function getFinancialEntryAccess(db, entryId, userId) {
@@ -123,6 +141,7 @@ async function resolveAccess(db, userId, payload) {
     if (payload.invoice_id) {
         const invoiceAccess = await getInvoiceAccess(db, payload.invoice_id, userId);
         if (!invoiceAccess) return { can_view: false, can_edit: false };
+        inferredTeamId = inferredTeamId || invoiceAccess.team_id || null;
         return { can_view: true, can_edit: invoiceAccess.can_edit, inferred_team_id: inferredTeamId };
     }
 
@@ -164,6 +183,7 @@ module.exports = {
             const status = normalizeStatus(req.query.status);
             const filters = ['team_id', 'client_id', 'project_id', 'invoice_id', 'document_type', 'provider'];
             const params = [req.userId, req.userId, req.userId, status, status, status];
+            const search = normalizeSearch(req.query.search || req.query.q);
             let query = `
                 SELECT d.*, t.name as team_name, c.name as client_name, p.title as project_title, i.number as invoice_number,
                        CASE
@@ -193,6 +213,21 @@ module.exports = {
                     query += ` AND d.${filter} = ?`;
                     params.push(req.query[filter]);
                 }
+            }
+
+            if (search) {
+                query += `
+                    AND (
+                        LOWER(d.file_name) LIKE LOWER(?)
+                        OR LOWER(COALESCE(d.description, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(d.file_url, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(c.name, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(p.title, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(i.number, '')) LIKE LOWER(?)
+                    )
+                `;
+                const searchParam = `%${search}%`;
+                params.push(searchParam, searchParam, searchParam, searchParam, searchParam, searchParam);
             }
 
             query += ' ORDER BY d.created_at DESC, d.id DESC';

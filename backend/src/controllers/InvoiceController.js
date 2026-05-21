@@ -1,5 +1,11 @@
 const connectDb = require('../config/database');
 const { isDate, isNonEmptyString, isNonNegativeMoney, toMoney } = require('../utils/validators');
+const {
+    canEditInvoice,
+    canEditProjectFinancials,
+    canViewInvoice,
+    sanitizeInvoiceForRole
+} = require('../utils/permissions');
 
 const ALLOWED_STATUSES = ['pendente', 'emitida', 'enviada', 'paga', 'cancelada'];
 const COMPANY_LIMITS = {
@@ -7,16 +13,14 @@ const COMPANY_LIMITS = {
     me: 360000
 };
 
-async function canAccessProject(db, projectId, userId) {
+async function getInvoice(db, id) {
     return db.get(`
-        SELECT p.id
-        FROM projects p
-        LEFT JOIN project_members pm 
-            ON pm.project_id = p.id AND pm.user_id = ?
-        WHERE p.id = ?
-          AND p.archived = 0
-          AND (p.user_id = ? OR pm.user_id IS NOT NULL)
-    `, [userId, projectId, userId]);
+        SELECT i.*, p.title as project_title, p.team_id, t.name as team_name
+        FROM invoices i
+        LEFT JOIN projects p ON p.id = i.project_id
+        LEFT JOIN teams t ON t.id = p.team_id
+        WHERE i.id = ?
+    `, [id]);
 }
 
 module.exports = {
@@ -35,9 +39,9 @@ module.exports = {
             const db = await connectDb();
 
             if (project_id) {
-                const project = await canAccessProject(db, project_id, req.userId);
-                if (!project) {
-                    return res.status(403).json({ error: 'Voce nao tem acesso a este projeto.' });
+                const canEditProject = await canEditProjectFinancials(db, req.userId, project_id);
+                if (!canEditProject) {
+                    return res.status(403).json({ error: 'Sem permissao financeira para registrar NF neste projeto.' });
                 }
             }
 
@@ -64,20 +68,38 @@ module.exports = {
 
     async index(req, res) {
         try {
-            const { status, month, year } = req.query;
+            const { status, month, year, project_id } = req.query;
             const db = await connectDb();
 
             let query = `
-                SELECT i.*, p.title as project_title
+                SELECT i.*, p.title as project_title, p.team_id, t.name as team_name
                 FROM invoices i
                 LEFT JOIN projects p ON p.id = i.project_id
-                WHERE i.user_id = ?
+                LEFT JOIN teams t ON t.id = p.team_id
+                LEFT JOIN project_members pm 
+                    ON pm.project_id = i.project_id 
+                    AND pm.user_id = ?
+                LEFT JOIN team_members tm
+                    ON tm.team_id = p.team_id
+                    AND tm.user_id = ?
+                    AND tm.status = 'active'
+                WHERE (
+                    i.user_id = ?
+                    OR p.user_id = ?
+                    OR pm.user_id IS NOT NULL
+                    OR tm.user_id IS NOT NULL
+                )
             `;
-            const params = [req.userId];
+            const params = [req.userId, req.userId, req.userId, req.userId];
 
             if (status) {
                 query += ' AND i.status = ?';
                 params.push(status);
+            }
+
+            if (project_id) {
+                query += ' AND i.project_id = ?';
+                params.push(project_id);
             }
 
             if (month && year) {
@@ -88,7 +110,18 @@ module.exports = {
             query += ' ORDER BY i.issue_date DESC, i.id DESC';
 
             const invoices = await db.all(query, params);
-            return res.json(invoices);
+            const visible = [];
+
+            for (const invoice of invoices) {
+                const canView = await canViewInvoice(db, req.userId, invoice);
+                if (!canView) continue;
+                visible.push(sanitizeInvoiceForRole({
+                    ...invoice,
+                    can_edit: await canEditInvoice(db, req.userId, invoice)
+                }, true));
+            }
+
+            return res.json(visible);
         } catch (error) {
             console.error('[InvoiceController.index]', error);
             return res.status(500).json({ error: 'Erro ao buscar notas fiscais.' });
@@ -230,12 +263,19 @@ module.exports = {
             }
 
             const db = await connectDb();
+            const invoice = await getInvoice(db, id);
+
+            if (!invoice) {
+                return res.status(404).json({ error: 'Nota fiscal nao encontrada.' });
+            }
+
+            if (!await canEditInvoice(db, req.userId, invoice)) {
+                return res.status(403).json({ error: 'Sem permissao para editar esta nota fiscal.' });
+            }
 
             if (project_id) {
-                const project = await canAccessProject(db, project_id, req.userId);
-                if (!project) {
-                    return res.status(403).json({ error: 'Voce nao tem acesso a este projeto.' });
-                }
+                const canEditProject = await canEditProjectFinancials(db, req.userId, project_id);
+                if (!canEditProject) return res.status(403).json({ error: 'Sem permissao financeira para vincular esta NF ao projeto.' });
             }
 
             const result = await db.run(`
@@ -247,7 +287,7 @@ module.exports = {
                     amount = COALESCE(?, amount),
                     issue_date = COALESCE(?, issue_date),
                     status = COALESCE(?, status)
-                WHERE id = ? AND user_id = ?
+                WHERE id = ?
             `, [
                 project_id === undefined ? null : project_id || null,
                 number,
@@ -256,8 +296,7 @@ module.exports = {
                 amount === undefined ? null : toMoney(amount),
                 issue_date,
                 status,
-                id,
-                req.userId
+                id
             ]);
 
             if (result.changes === 0) {
@@ -275,11 +314,17 @@ module.exports = {
         try {
             const { id } = req.params;
             const db = await connectDb();
-            const result = await db.run('DELETE FROM invoices WHERE id = ? AND user_id = ?', [id, req.userId]);
+            const invoice = await getInvoice(db, id);
 
-            if (result.changes === 0) {
+            if (!invoice) {
                 return res.status(404).json({ error: 'Nota fiscal nao encontrada.' });
             }
+
+            if (!await canEditInvoice(db, req.userId, invoice)) {
+                return res.status(403).json({ error: 'Sem permissao para remover esta nota fiscal.' });
+            }
+
+            await db.run('DELETE FROM invoices WHERE id = ?', [id]);
 
             return res.json({ message: 'Nota fiscal removida.' });
         } catch (error) {

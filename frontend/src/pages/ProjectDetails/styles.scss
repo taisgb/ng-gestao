@@ -504,6 +504,31 @@ $line: #ece7df;
         border-color: $ink-blue;
         color: #fff;
       }
+
+      &.active.pending {
+        background: #64748b;
+        border-color: #64748b;
+      }
+
+      &.active.approved {
+        background: #2563eb;
+        border-color: #2563eb;
+      }
+
+      &.active.in-progress {
+        background: #d97706;
+        border-color: #d97706;
+      }
+
+      &.active.done {
+        background: #16a34a;
+        border-color: #16a34a;
+      }
+
+      &.active.warranty {
+        background: #7c3aed;
+        border-color: #7c3aed;
+      }
     }
   }
 
@@ -655,6 +680,12 @@ $line: #ece7df;
         flex: 0 0 auto;
       }
 
+      > div {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+      }
+
       span {
         min-width: 0;
         overflow-wrap: anywhere;
@@ -666,9 +697,8 @@ $line: #ece7df;
         color: $leaf-green;
         font-size: 0.72rem;
         font-weight: 800;
-        margin-left: auto;
+        width: fit-content;
         padding: 4px 8px;
-        white-space: nowrap;
       }
 
       &.done span,
@@ -891,6 +921,171 @@ $line: #ece7df;
       background: var(--surface-2);
       border: 1px solid var(--border);
       color: var(--text-muted);
+
+      &.pending {
+        background: var(--surface-2);
+        color: var(--text-muted);
+      }
+
+      &.approved {
+        background: color-mix(in srgb, var(--info) 12%, var(--surface));
+        border-color: color-mix(in srgb, var(--info) 28%, var(--border));
+        color: var(--info);
+      }
+
+      &.in-progress {
+        background: var(--warning-bg);
+        border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+        color: var(--accent);
+      }
+
+      &.done {
+        background: var(--success-bg);
+        border-color: color-mix(in srgb, var(--success) 28%, var(--border));
+        color: var(--success);
+      }
+
+      &.warranty {
+        background: color-mix(in srgb, #8b5cf6 12%, var(--surface));
+        border-color: color-mix(in srgb, #8b5cf6 30%, var(--border));
+        color: #7c3aed;
+      }
+    }
+
+    .header-actions {
+      align-items: flex-end;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-edit-project {
+      background: var(--text);
+      border: 1px solid var(--text);
+      border-radius: var(--radius-sm);
+      color: var(--surface);
+      font-size: 0.84rem;
+      font-weight: 780;
+      min-height: 36px;
+      padding: 0 12px;
+      white-space: nowrap;
+    }
+  }
+
+  .project-edit-overlay {
+    align-items: stretch;
+    background: rgba(17, 24, 20, 0.34);
+    display: flex;
+    inset: 0;
+    justify-content: flex-end;
+    padding: 18px;
+    position: fixed;
+    z-index: 80;
+  }
+
+  .project-edit-drawer {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 520px;
+    overflow: auto;
+    padding: 18px;
+    width: min(100%, 520px);
+
+    header {
+      align-items: flex-start;
+      display: flex;
+      gap: 14px;
+      justify-content: space-between;
+      margin-bottom: 4px;
+
+      h2 {
+        color: var(--text);
+        font-size: 1.08rem;
+        font-weight: 800;
+      }
+
+      p {
+        color: var(--text-muted);
+        font-size: 0.86rem;
+        margin-top: 4px;
+      }
+
+      button {
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        min-height: 34px;
+        min-width: 34px;
+      }
+    }
+
+    label {
+      color: var(--text-muted);
+      display: grid;
+      font-size: 0.82rem;
+      font-weight: 720;
+      gap: 6px;
+    }
+
+    input,
+    select,
+    textarea {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      min-height: 40px;
+      padding: 0 11px;
+      width: 100%;
+    }
+
+    textarea {
+      min-height: 86px;
+      padding: 10px 11px;
+      resize: vertical;
+    }
+
+    input:disabled {
+      opacity: 0.62;
+    }
+
+    .edit-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .drawer-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 4px;
+
+      button {
+        border-radius: var(--radius-sm);
+        font-weight: 780;
+        min-height: 40px;
+        padding: 0 14px;
+      }
+
+      .btn-cancel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+
+      button[type='submit'] {
+        background: var(--text);
+        border: 1px solid var(--text);
+        color: var(--surface);
+      }
     }
   }
 
@@ -1126,6 +1321,10 @@ $line: #ece7df;
         grid-column: auto;
       }
     }
+
+    .project-edit-drawer .edit-grid {
+      grid-template-columns: 1fr;
+    }
   }
 }
 
@@ -1273,6 +1472,62 @@ body[data-theme='dark'] {
       span {
         background: rgba(16, 32, 20, 0.14) !important;
         color: #102014 !important;
+      }
+    }
+
+    .status-options button.active.pending {
+      background: #64748b !important;
+      border-color: #64748b !important;
+      color: #fff !important;
+    }
+
+    .status-options button.active.approved {
+      background: #60a5fa !important;
+      border-color: #60a5fa !important;
+      color: #102014 !important;
+    }
+
+    .status-options button.active.in-progress {
+      background: #f59e0b !important;
+      border-color: #f59e0b !important;
+      color: #102014 !important;
+    }
+
+    .status-options button.active.done {
+      background: #86efac !important;
+      border-color: #86efac !important;
+      color: #102014 !important;
+    }
+
+    .status-options button.active.warranty {
+      background: #c4b5fd !important;
+      border-color: #c4b5fd !important;
+      color: #102014 !important;
+    }
+
+    .project-edit-overlay {
+      background: rgba(0, 0, 0, 0.52) !important;
+    }
+
+    .project-edit-drawer {
+      background: #18211c !important;
+      border-color: rgba(255, 255, 255, 0.10) !important;
+      color: #f4f1ea !important;
+
+      h2 {
+        color: #f4f1ea !important;
+      }
+
+      label,
+      p {
+        color: #c8c1b7 !important;
+      }
+
+      header button,
+      .drawer-actions .btn-cancel {
+        background: #1d2822 !important;
+        border-color: rgba(255, 255, 255, 0.12) !important;
+        color: #f4f1ea !important;
       }
     }
 

@@ -2,11 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import api from '../../services/api';
 import './styles.scss';
 
-const ROLES = ['admin', 'gestor', 'member'];
+const ROLES = ['admin', 'gestor', 'financeiro', 'member'];
 const ROLE_LABELS = {
   owner: 'Owner',
   admin: 'Admin',
   gestor: 'Gestor',
+  financeiro: 'Financeiro',
   member: 'Membro'
 };
 
@@ -127,7 +128,26 @@ export default function Teams() {
     }
   }
 
+  async function handleDeleteTeam(team) {
+    const confirmed = window.confirm('Excluir este time definitivamente? Esta acao so sera permitida se nao houver projetos ativos, membros ativos ou financeiro pendente.');
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/teams/${team.id}`);
+      await loadTeams();
+      setFeedback('Time excluido.');
+    } catch (err) {
+      const blockers = err.response?.data?.blockers;
+      if (blockers) {
+        setFeedback(`Nao foi possivel excluir. Projetos ativos: ${blockers.active_projects || 0}. Membros ativos: ${blockers.active_members || 0}. Financeiro pendente: ${blockers.pending_financial_entries || 0}.`);
+        return;
+      }
+      setFeedback(err.response?.data?.error || 'Erro ao excluir time.');
+    }
+  }
+
   const canManage = ['owner', 'admin'].includes(selectedTeam?.my_role);
+  const canDeleteSelectedTeam = ['owner', 'admin'].includes(selectedTeam?.my_role);
   const selectedTeamArchived = Number(selectedTeam?.archived || 0) === 1;
 
   return (
@@ -217,6 +237,11 @@ export default function Teams() {
                 <div className="team-title-actions">
                   {selectedTeamArchived && <span className="archive-badge">Arquivado</span>}
                   <span className={`role-badge ${selectedTeam.my_role}`}>{ROLE_LABELS[selectedTeam.my_role]}</span>
+                  {canDeleteSelectedTeam && (
+                    <button type="button" className="btn-delete-team" onClick={() => handleDeleteTeam(selectedTeam)}>
+                      Excluir time
+                    </button>
+                  )}
                 </div>
               </div>
 

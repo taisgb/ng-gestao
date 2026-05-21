@@ -51,6 +51,7 @@ $line: #ece7df;
   }
 
   .documents-filters,
+  .documents-quick-filters,
   .document-form-panel,
   .documents-list article {
     background: #fff;
@@ -58,12 +59,46 @@ $line: #ece7df;
     border-radius: 8px;
   }
 
+  .documents-quick-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px;
+
+    button {
+      background: $sand-bg;
+      border: 1px solid $line;
+      border-radius: 999px;
+      color: $earth-brown;
+      font-size: 0.82rem;
+      font-weight: 800;
+      padding: 8px 12px;
+
+      &.active,
+      &:hover {
+        background: $ink-blue;
+        border-color: $ink-blue;
+        color: #fff;
+      }
+    }
+  }
+
   .documents-filters {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: minmax(220px, 1.4fr) repeat(7, minmax(120px, 1fr));
     gap: 10px;
     padding: 14px;
     margin-bottom: 16px;
+
+    button {
+      background: $sand-bg;
+      border: 1px solid $line;
+      border-radius: 8px;
+      color: $earth-brown;
+      font-weight: 800;
+      padding: 10px;
+    }
   }
 
   input,
@@ -206,6 +241,72 @@ $line: #ece7df;
 
     .doc-actions {
       justify-content: flex-start;
+    }
+  }
+}
+
+body[data-theme='dark'] {
+  .documents-container {
+    .page-header {
+      h1 { color: #f4f1ea; }
+      p { color: #c8c1b7; }
+    }
+
+    .documents-summary div,
+    .documents-filters,
+    .documents-quick-filters,
+    .document-form-panel,
+    .documents-list article {
+      background: #18211c;
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .documents-summary span,
+    .documents-list article p {
+      color: #c8c1b7;
+    }
+
+    .documents-summary strong,
+    .document-form-panel h2,
+    .documents-list article strong {
+      color: #f4f1ea;
+    }
+
+    input,
+    select {
+      background: #162019;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #f4f1ea;
+    }
+
+    input::placeholder {
+      color: #9c948a;
+    }
+
+    .documents-quick-filters button,
+    .documents-filters button,
+    .doc-badges small,
+    .doc-actions button {
+      background: #162019;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #f4f1ea;
+    }
+
+    .documents-quick-filters button.active,
+    .documents-quick-filters button:hover {
+      background: #34516f;
+      border-color: #34516f;
+      color: #fff;
+    }
+
+    .doc-actions button.restore {
+      background: rgba(109, 122, 95, 0.18);
+      border-color: rgba(159, 223, 179, 0.28);
+      color: #9fdfb3;
+    }
+
+    .empty-msg {
+      color: #c8c1b7;
     }
   }
 }

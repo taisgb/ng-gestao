@@ -12,19 +12,27 @@ const ProjectFinancialController = require('../src/controllers/ProjectFinancialC
 const PersonalTransactionController = require('../src/controllers/PersonalTransactionController');
 const ServiceController = require('../src/controllers/ServiceController');
 const SessionController = require('../src/controllers/SessionController');
+const InvoiceController = require('../src/controllers/InvoiceController');
 const TaskController = require('../src/controllers/TaskController');
 const TeamController = require('../src/controllers/TeamController');
 const DocumentController = require('../src/controllers/DocumentController');
 const UserController = require('../src/controllers/UserController');
 const authMiddleware = require('../src/middlewares/auth');
 const {
+    canAssignTask,
+    canEditClient,
+    canEditPersonalFinance,
     canEditProjectFinancials,
     canEditTeamResource,
     canManageTeam,
     canViewOwnFinancialShare,
     canViewProjectFinancials,
     canViewTeamResource,
-    getTeamRole
+    getTeamRole,
+    sanitizeClientForRole,
+    sanitizeProjectForRole,
+    sanitizeTaskForRole,
+    sanitizeUserForRole
 } = require('../src/utils/permissions');
 
 console.log = () => {};
@@ -167,6 +175,96 @@ test('project financial permissions hide global totals from member', async () =>
         assert.equal(await canEditProjectFinancials(db, seeded.gestorId, seeded.projectId), true);
         assert.equal(await canViewProjectFinancials(db, seeded.memberId, seeded.projectId), false);
         assert.equal(await canViewOwnFinancialShare(db, seeded.memberId, seeded.projectId), false);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('acl sanitizes client, project, task and user sensitive fields for restricted roles', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        await db.run(
+            "UPDATE clients SET contact_name = 'Cliente Segredo', phone = '71999990000', email = 'cliente@privado.local', document = '12345678000199' WHERE id = ?",
+            [seeded.clientId]
+        );
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+
+        const memberClients = await callController(ClientController.index, {
+            userId: seeded.memberId,
+            query: { status: 'all' }
+        });
+        assert.equal(memberClients.statusCode, 200);
+        const memberClient = memberClients.body.find(client => client.id === seeded.clientId);
+        assert.equal(memberClient.email, null);
+        assert.equal(memberClient.phone, null);
+        assert.equal(memberClient.document, null);
+        assert.equal(memberClient.contact_name, null);
+        assert.equal(memberClient.sensitive_hidden, true);
+
+        const ownerClient = await db.get('SELECT * FROM clients WHERE id = ?', [seeded.clientId]);
+        assert.equal(await canEditClient(db, seeded.ownerId, ownerClient), true);
+        assert.equal(await canEditClient(db, seeded.memberId, ownerClient), false);
+
+        const memberProject = await callController(ProjectController.show, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(memberProject.statusCode, 200);
+        assert.equal(memberProject.body.base_value, null);
+        assert.equal(memberProject.body.total_value, null);
+        assert.equal(memberProject.body.can_view_financials, false);
+
+        const financialEntry = await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category, amount, date, status
+            )
+            VALUES (?, ?, ?, ?, 'operational_expense', 'operational_expense', 'Fatura privada', 'Plugin', 99, '2026-05-20', 'pending')
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        const financialTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                assigned_to: seeded.memberId,
+                financial_entry_id: financialEntry.lastID,
+                task_type: 'financial',
+                title: 'Validar comprovante'
+            }
+        });
+        assert.equal(financialTask.statusCode, 201);
+
+        const memberTasks = await callController(TaskController.index, {
+            userId: seeded.memberId,
+            query: { source: 'financial' }
+        });
+        assert.equal(memberTasks.statusCode, 200);
+        const memberTask = memberTasks.body.find(task => task.id === financialTask.body.id);
+        assert.equal(memberTask.financial_entry_id, null);
+        assert.equal(memberTask.invoice_id, null);
+        assert.equal(memberTask.sensitive_hidden, true);
+
+        assert.equal(await canAssignTask(db, seeded.ownerId, seeded.memberId, {
+            project: { id: seeded.projectId, user_id: seeded.ownerId }
+        }), true);
+        assert.equal(await canAssignTask(db, seeded.ownerId, seeded.outsideId, {
+            project: { id: seeded.projectId, user_id: seeded.ownerId }
+        }), false);
+        assert.equal(await canEditPersonalFinance(db, seeded.ownerId, seeded.ownerId), true);
+        assert.equal(await canEditPersonalFinance(db, seeded.adminId, seeded.ownerId), false);
+
+        const sanitizedClient = sanitizeClientForRole(ownerClient, false);
+        assert.equal(sanitizedClient.email, null);
+        const sanitizedProject = sanitizeProjectForRole({ base_value: 4500, total_value: 4500 }, false);
+        assert.equal(sanitizedProject.base_value, null);
+        const sanitizedTask = sanitizeTaskForRole({ task_type: 'financial', financial_entry_id: 1, invoice_id: 2 }, false);
+        assert.equal(sanitizedTask.financial_entry_id, null);
+        const sanitizedUser = sanitizeUserForRole({ id: seeded.ownerId, name: 'Owner', email: 'owner@test.local', role: 'owner', plan: 'admin' }, false);
+        assert.equal(sanitizedUser.email, undefined);
     } finally {
         await cleanup();
     }
@@ -398,6 +496,98 @@ test('project archive and restore are reversible and blocked for team member', a
         project = await db.get('SELECT archived, archived_at FROM projects WHERE id = ?', [seeded.projectId]);
         assert.equal(project.archived, 0);
         assert.equal(project.archived_at, null);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project editors can update core fields and warranty dates are calculated', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const blocked = await callController(ProjectController.update, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId },
+            body: { title: 'Tentativa bloqueada' }
+        });
+        assert.equal(blocked.statusCode, 404);
+
+        const updated = await callController(ProjectController.update, {
+            userId: seeded.gestorId,
+            params: { id: seeded.projectId },
+            body: {
+                title: 'Site institucional atualizado',
+                description: 'Escopo revisado',
+                client_id: seeded.clientId,
+                deadline: '2026-07-20',
+                status: 'garantia',
+                base_value: 6200,
+                warranty_start_date: '2026-07-21',
+                warranty_days: 30,
+                scope: 'team',
+                team_id: seeded.teamId
+            }
+        });
+        assert.equal(updated.statusCode, 200);
+
+        const project = await db.get('SELECT * FROM projects WHERE id = ?', [seeded.projectId]);
+        assert.equal(project.title, 'Site institucional atualizado');
+        assert.equal(project.description, 'Escopo revisado');
+        assert.equal(project.client_id, seeded.clientId);
+        assert.equal(project.status, 'garantia');
+        assert.equal(project.base_value, 6200);
+        assert.equal(project.deadline, '2026-07-20');
+        assert.equal(project.warranty_start_date, '2026-07-21');
+        assert.equal(project.warranty_days, 30);
+        assert.equal(project.warranty_end_date, '2026-08-20');
+        assert.equal(project.team_id, seeded.teamId);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('dashboard warranty alerts list accessible projects with expiring or overdue warranty', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const soonDate = new Date();
+        soonDate.setDate(soonDate.getDate() + 5);
+        const farDate = new Date();
+        farDate.setDate(farDate.getDate() + 30);
+
+        await db.run(
+            "UPDATE projects SET status = 'garantia', warranty_start_date = ?, warranty_days = 1, warranty_end_date = ? WHERE id = ?",
+            [yesterdayDate.toISOString().split('T')[0], yesterdayDate.toISOString().split('T')[0], seeded.projectId]
+        );
+
+        const soonProject = await db.run(
+            "INSERT INTO projects (user_id, client_id, team_id, scope, title, status, warranty_start_date, warranty_days, warranty_end_date, archived) VALUES (?, ?, ?, 'team', 'Garantia vencendo', 'garantia', ?, 5, ?, 0)",
+            [seeded.ownerId, seeded.clientId, seeded.teamId, new Date().toISOString().split('T')[0], soonDate.toISOString().split('T')[0]]
+        );
+
+        const farProject = await db.run(
+            "INSERT INTO projects (user_id, client_id, team_id, scope, title, status, warranty_start_date, warranty_days, warranty_end_date, archived) VALUES (?, ?, ?, 'team', 'Garantia distante', 'garantia', ?, 30, ?, 0)",
+            [seeded.ownerId, seeded.clientId, seeded.teamId, new Date().toISOString().split('T')[0], farDate.toISOString().split('T')[0]]
+        );
+
+        const ownerAlerts = await callController(ProjectController.warrantyAlerts, {
+            userId: seeded.ownerId,
+            query: { days: '15', limit: '5' }
+        });
+        assert.equal(ownerAlerts.statusCode, 200);
+        assert.equal(ownerAlerts.body.some(project => project.id === seeded.projectId && project.alert_level === 'overdue'), true);
+        assert.equal(ownerAlerts.body.some(project => project.id === soonProject.lastID && project.alert_level === 'soon'), true);
+        assert.equal(ownerAlerts.body.some(project => project.id === farProject.lastID), false);
+
+        const memberAlerts = await callController(ProjectController.warrantyAlerts, {
+            userId: seeded.memberId,
+            query: { days: '15' }
+        });
+        assert.equal(memberAlerts.statusCode, 200);
+        assert.equal(memberAlerts.body.length, 0);
     } finally {
         await cleanup();
     }
@@ -849,6 +1039,168 @@ test('task due date persists on create, update, list, summary and dashboard feed
     }
 });
 
+test('tasks support responsible assignment and full editing with project permissions', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'collaborator')",
+            [seeded.projectId, seeded.adminId]
+        );
+
+        const assignedTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                assigned_to: seeded.memberId,
+                title: 'Publicar landing page',
+                description: 'Checklist operacional',
+                priority: 'high',
+                due_date: '2026-06-15'
+            }
+        });
+        assert.equal(assignedTask.statusCode, 201);
+
+        let saved = await db.get(
+            'SELECT user_id, created_by, assigned_to, title, priority, due_date FROM tasks WHERE id = ?',
+            [assignedTask.body.id]
+        );
+        assert.equal(saved.user_id, seeded.ownerId);
+        assert.equal(saved.created_by, seeded.ownerId);
+        assert.equal(saved.assigned_to, seeded.memberId);
+        assert.equal(saved.priority, 'high');
+        assert.equal(String(saved.due_date).slice(0, 10), '2026-06-15');
+
+        const memberCompletesOwnTask = await callController(TaskController.updateStatus, {
+            userId: seeded.memberId,
+            params: { id: assignedTask.body.id },
+            body: { status: 'done' }
+        });
+        assert.equal(memberCompletesOwnTask.statusCode, 200);
+
+        const memberCannotReassign = await callController(TaskController.update, {
+            userId: seeded.memberId,
+            params: { id: assignedTask.body.id },
+            body: { assigned_to: seeded.adminId }
+        });
+        assert.equal(memberCannotReassign.statusCode, 403);
+
+        const ownerUpdatesTask = await callController(TaskController.update, {
+            userId: seeded.ownerId,
+            params: { id: assignedTask.body.id },
+            body: {
+                title: 'Publicar landing page revisada',
+                description: 'Checklist revisado',
+                priority: 'urgent',
+                status: 'em andamento',
+                assigned_to: seeded.adminId,
+                due_date: '2026-06-20'
+            }
+        });
+        assert.equal(ownerUpdatesTask.statusCode, 200);
+
+        saved = await db.get(
+            'SELECT title, description, priority, status, assigned_to, due_date FROM tasks WHERE id = ?',
+            [assignedTask.body.id]
+        );
+        assert.equal(saved.title, 'Publicar landing page revisada');
+        assert.equal(saved.description, 'Checklist revisado');
+        assert.equal(saved.priority, 'urgent');
+        assert.equal(saved.status, 'em andamento');
+        assert.equal(saved.assigned_to, seeded.adminId);
+        assert.equal(String(saved.due_date).slice(0, 10), '2026-06-20');
+
+        const outsideAssigneeBlocked = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                assigned_to: seeded.outsideId,
+                title: 'Tarefa com responsavel externo'
+            }
+        });
+        assert.equal(outsideAssigneeBlocked.statusCode, 400);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('dashboard week endpoint returns upcoming open tasks with responsible data', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+
+        const todayDate = new Date();
+        const tomorrowDate = new Date();
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const outsideWeekDate = new Date();
+        outsideWeekDate.setDate(outsideWeekDate.getDate() + 10);
+        const today = todayDate.toISOString().split('T')[0];
+        const tomorrow = tomorrowDate.toISOString().split('T')[0];
+        const outsideWeek = outsideWeekDate.toISOString().split('T')[0];
+
+        const todayTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                assigned_to: seeded.memberId,
+                title: 'Tarefa de hoje',
+                priority: 'high',
+                due_date: today
+            }
+        });
+        assert.equal(todayTask.statusCode, 201);
+
+        const tomorrowTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                assigned_to: seeded.memberId,
+                title: 'Tarefa de amanha',
+                priority: 'urgent',
+                due_date: tomorrow
+            }
+        });
+        assert.equal(tomorrowTask.statusCode, 201);
+
+        const outsideTask = await callController(TaskController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                title: 'Tarefa fora da semana',
+                due_date: outsideWeek
+            }
+        });
+        assert.equal(outsideTask.statusCode, 201);
+
+        await callController(TaskController.updateStatus, {
+            userId: seeded.ownerId,
+            params: { id: todayTask.body.id },
+            body: { status: 'done' }
+        });
+
+        const weekTasks = await callController(TaskController.week, {
+            userId: seeded.ownerId,
+            query: { limit: 5 }
+        });
+        assert.equal(weekTasks.statusCode, 200);
+        assert.equal(weekTasks.body.some(task => task.id === todayTask.body.id), false);
+        assert.equal(weekTasks.body.some(task => task.id === tomorrowTask.body.id), true);
+        assert.equal(weekTasks.body.some(task => task.id === outsideTask.body.id), false);
+        assert.equal(weekTasks.body[0].assigned_name, 'Member');
+    } finally {
+        await cleanup();
+    }
+});
+
 test('team archive and restore are owner-only and filtered by status', async () => {
     const { db, cleanup } = await openTestDb();
     try {
@@ -891,6 +1243,90 @@ test('team archive and restore are owner-only and filtered by status', async () 
             query: {}
         });
         assert.equal(restoredActiveList.body.some(team => team.id === seeded.teamId), true);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('team delete is blocked by active dependencies and allowed when safe', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const blocked = await callController(TeamController.destroy, {
+            userId: seeded.ownerId,
+            params: { id: seeded.teamId }
+        });
+        assert.equal(blocked.statusCode, 409);
+        assert.equal(blocked.body.blockers.active_projects, 1);
+        assert.equal(blocked.body.blockers.active_members, 3);
+
+        const safeTeam = await db.run(
+            "INSERT INTO teams (name, owner_id, archived) VALUES ('Time vazio', ?, 1)",
+            [seeded.ownerId]
+        );
+        await db.run(
+            "INSERT INTO team_members (team_id, user_id, email, role, status) VALUES (?, ?, 'owner@test.local', 'owner', 'active')",
+            [safeTeam.lastID, seeded.ownerId]
+        );
+
+        const deleted = await callController(TeamController.destroy, {
+            userId: seeded.ownerId,
+            params: { id: safeTeam.lastID }
+        });
+        assert.equal(deleted.statusCode, 200);
+
+        const gone = await db.get('SELECT id FROM teams WHERE id = ?', [safeTeam.lastID]);
+        assert.equal(gone, undefined);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('removing team member revokes team project access and task assignment', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+        const task = await db.run(`
+            INSERT INTO tasks (user_id, created_by, assigned_to, project_id, team_id, title, status)
+            VALUES (?, ?, ?, ?, ?, 'Tarefa atribuida', 'pendente')
+        `, [seeded.memberId, seeded.ownerId, seeded.memberId, seeded.projectId, seeded.teamId]);
+
+        const before = await callController(ProjectController.show, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(before.statusCode, 200);
+
+        const memberRow = await db.get(
+            "SELECT id FROM team_members WHERE team_id = ? AND user_id = ? AND status = 'active'",
+            [seeded.teamId, seeded.memberId]
+        );
+        const removed = await callController(TeamController.removeMember, {
+            userId: seeded.ownerId,
+            params: { id: seeded.teamId, memberId: memberRow.id }
+        });
+        assert.equal(removed.statusCode, 200);
+
+        const projectMembership = await db.get(
+            'SELECT id FROM project_members WHERE project_id = ? AND user_id = ?',
+            [seeded.projectId, seeded.memberId]
+        );
+        assert.equal(projectMembership, undefined);
+
+        const savedTask = await db.get('SELECT assigned_to FROM tasks WHERE id = ?', [task.lastID]);
+        assert.equal(savedTask.assigned_to, null);
+
+        const after = await callController(ProjectController.show, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(after.statusCode, 403);
     } finally {
         await cleanup();
     }
@@ -1332,6 +1768,21 @@ test('documents support individual privacy, team permissions, links and reversib
         savedTeamDoc = await db.get('SELECT archived FROM documents WHERE id = ?', [teamDoc.body.id]);
         assert.equal(savedTeamDoc.archived, 0);
 
+        const searchByName = await callController(DocumentController.index, {
+            userId: seeded.ownerId,
+            query: { status: 'all', search: 'Briefing atualizado' }
+        });
+        assert.equal(searchByName.statusCode, 200);
+        assert.equal(searchByName.body.some(document => document.id === teamDoc.body.id), true);
+        assert.equal(searchByName.body.some(document => document.id === individualDoc.body.id), false);
+
+        const searchByProject = await callController(DocumentController.index, {
+            userId: seeded.ownerId,
+            query: { status: 'all', search: 'Site Institucional' }
+        });
+        assert.equal(searchByProject.statusCode, 200);
+        assert.equal(searchByProject.body.some(document => document.id === projectDoc.body.id), true);
+
         const clientDocs = await callController(DocumentController.byClient, {
             userId: seeded.memberId,
             params: { id: seeded.clientId },
@@ -1383,6 +1834,95 @@ test('documents support individual privacy, team permissions, links and reversib
             query: { status: 'all' }
         });
         assert.equal(memberFinancialDocs.body.some(document => document.id === financialDoc.body.id), false);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project invoices respect financial project roles and block regular members', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+
+        const invoice = await callController(InvoiceController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                number: '001',
+                client_name: 'Cliente Compartilhado',
+                description: 'NF de projeto',
+                amount: 4800,
+                issue_date: '2026-05-20',
+                status: 'emitida'
+            }
+        });
+        assert.equal(invoice.statusCode, 201);
+
+        const memberInvoices = await callController(InvoiceController.index, {
+            userId: seeded.memberId,
+            query: {}
+        });
+        assert.equal(memberInvoices.statusCode, 200);
+        assert.equal(memberInvoices.body.some(item => item.id === invoice.body.id), false);
+
+        const memberUpdateBlocked = await callController(InvoiceController.update, {
+            userId: seeded.memberId,
+            params: { id: invoice.body.id },
+            body: { status: 'paga' }
+        });
+        assert.equal(memberUpdateBlocked.statusCode, 403);
+
+        await db.run(
+            "UPDATE project_members SET role = 'financeiro' WHERE project_id = ? AND user_id = ?",
+            [seeded.projectId, seeded.memberId]
+        );
+
+        const financeiroInvoices = await callController(InvoiceController.index, {
+            userId: seeded.memberId,
+            query: { project_id: seeded.projectId }
+        });
+        assert.equal(financeiroInvoices.statusCode, 200);
+        assert.equal(financeiroInvoices.body.some(item => item.id === invoice.body.id && Number(item.amount) === 4800), true);
+        assert.equal(financeiroInvoices.body.find(item => item.id === invoice.body.id).can_edit, true);
+
+        const financeiroUpdate = await callController(InvoiceController.update, {
+            userId: seeded.memberId,
+            params: { id: invoice.body.id },
+            body: { status: 'paga' }
+        });
+        assert.equal(financeiroUpdate.statusCode, 200);
+
+        const invoiceDocument = await callController(DocumentController.create, {
+            userId: seeded.memberId,
+            body: {
+                invoice_id: invoice.body.id,
+                file_name: 'PDF NF 001',
+                file_url: 'https://example.com/nf-001.pdf',
+                provider: 'external',
+                document_type: 'invoice'
+            }
+        });
+        assert.equal(invoiceDocument.statusCode, 201);
+
+        const savedInvoiceDocument = await db.get(
+            'SELECT team_id, invoice_id FROM documents WHERE id = ?',
+            [invoiceDocument.body.id]
+        );
+        assert.equal(savedInvoiceDocument.team_id, seeded.teamId);
+        assert.equal(savedInvoiceDocument.invoice_id, invoice.body.id);
+
+        const invoiceDocs = await callController(DocumentController.byInvoice, {
+            userId: seeded.memberId,
+            params: { id: invoice.body.id },
+            query: { status: 'all' }
+        });
+        assert.equal(invoiceDocs.statusCode, 200);
+        assert.equal(invoiceDocs.body.some(document => document.id === invoiceDocument.body.id), true);
     } finally {
         await cleanup();
     }
@@ -1581,6 +2121,26 @@ test('personal transactions are private, filterable and summarized by month', as
         });
         assert.equal(expense.statusCode, 201);
 
+        const gympass = await callController(PersonalTransactionController.create, {
+            userId: seeded.ownerId,
+            body: {
+                type: 'expense',
+                description: 'Gympass',
+                category: 'Academia',
+                amount: 136,
+                date: '2026-05-12',
+                payment_due_date: '2026-05-12',
+                status: 'paid',
+                payment_method: 'Cartao',
+                source: 'manual',
+                financial_type: 'personal_expense',
+                financial_scope: 'personal',
+                is_recurring: 1,
+                recurrence_frequency: 'monthly'
+            }
+        });
+        assert.equal(gympass.statusCode, 201);
+
         const otherExpense = await callController(PersonalTransactionController.create, {
             userId: seeded.memberId,
             body: {
@@ -1614,6 +2174,15 @@ test('personal transactions are private, filterable and summarized by month', as
         assert.equal(manualIncomeList.body.length, 1);
         assert.equal(manualIncomeList.body[0].origin_label, 'Freelance');
 
+        const personalExpenseList = await callController(PersonalTransactionController.index, {
+            userId: seeded.ownerId,
+            query: { financial_scope: 'personal', financial_type: 'personal_expense', is_recurring: '1', month: '05', year: '2026' }
+        });
+        assert.equal(personalExpenseList.statusCode, 200);
+        assert.equal(personalExpenseList.body.length, 2);
+        assert.equal(personalExpenseList.body.some(item => item.description === 'Gympass'), true);
+        assert.equal(personalExpenseList.body.find(item => item.description === 'Gympass').project_id, null);
+
         const memberCannotEdit = await callController(PersonalTransactionController.update, {
             userId: seeded.memberId,
             params: { id: income.body.id },
@@ -1639,12 +2208,16 @@ test('personal transactions are private, filterable and summarized by month', as
         assert.equal(summary.statusCode, 200);
         assert.equal(summary.body.bank_balance, 1000);
         assert.equal(summary.body.total_income_month, 2100);
-        assert.equal(summary.body.total_expense_month, 250);
+        assert.equal(summary.body.total_expense_month, 386);
         assert.equal(summary.body.gross_revenue_period, 5400);
         assert.equal(summary.body.expected_month, 0);
         assert.equal(summary.body.transfers, 3400);
         assert.equal(summary.body.own_amount, 2000);
-        assert.equal(summary.body.projected_balance, 2850);
+        assert.equal(summary.body.personal_expenses, 386);
+        assert.equal(summary.body.work_expenses, 0);
+        assert.equal(summary.body.recurring_expenses, 386);
+        assert.equal(summary.body.personal_projected_balance, 2714);
+        assert.equal(summary.body.projected_balance, 2714);
         assert.equal(summary.body.total_debt, 2000);
         assert.equal(summary.body.current_card_bill, 350);
 
@@ -1665,7 +2238,8 @@ test('personal transactions are private, filterable and summarized by month', as
             userId: seeded.ownerId,
             query: { type: 'expense', month: '05', year: '2026' }
         });
-        assert.equal(afterArchive.body.length, 0);
+        assert.equal(afterArchive.body.length, 1);
+        assert.equal(afterArchive.body[0].description, 'Gympass');
     } finally {
         await cleanup();
     }

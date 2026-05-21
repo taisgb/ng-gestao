@@ -1,13 +1,15 @@
 const connectDb = require('../config/database');
 const { isDate, isNonEmptyString } = require('../utils/validators');
 const {
+    canAssignTask,
     canEditProjectFinancials,
     canCompleteTask,
     canEditTask,
     canEditTeamResource,
     canViewProjectFinancials,
     getProjectAccess,
-    getTeamRole
+    getTeamRole,
+    sanitizeTaskForRole
 } = require('../utils/permissions');
 
 const DONE_STATUSES = ['concluido', 'concluído', 'concluÃ­do', 'done'];
@@ -255,7 +257,10 @@ async function listTasksForUser(db, userId, query = {}) {
         const normalizedRow = normalizeTaskRow(row, numericUserId);
 
         if (await canAccessTaskRow(db, normalizedRow, numericUserId)) {
-            allowed.push(normalizedRow);
+            const canViewSensitive = normalizedRow.project_id
+                ? await canViewProjectFinancials(db, numericUserId, normalizedRow.project_id)
+                : false;
+            allowed.push(sanitizeTaskForRole(normalizedRow, canViewSensitive));
         }
     }
 
@@ -316,6 +321,7 @@ module.exports = {
             let taskScope = SCOPES.includes(scope) ? scope : 'individual';
             let taskTeamId = team_id || null;
             let taskClientId = client_id || null;
+            let taskProject = null;
 
             if (project_id) {
                 const project = await getProjectAccess(db, req.userId, project_id);
@@ -324,6 +330,7 @@ module.exports = {
                     return res.status(403).json({ error: 'Voce nao tem permissao para vincular tarefas a este projeto.' });
                 }
 
+                taskProject = project;
                 taskScope = project.scope === 'team' ? 'team' : 'individual';
                 taskTeamId = project.scope === 'team' ? project.team_id : null;
                 taskClientId = taskClientId || project.client_id || null;
@@ -341,6 +348,14 @@ module.exports = {
             }
 
             const assignedTo = assigned_to || req.userId;
+            const canAssign = await canAssignTask(db, req.userId, assignedTo, {
+                project: taskProject,
+                teamId: taskTeamId
+            });
+
+            if (!canAssign) {
+                return res.status(400).json({ error: 'Responsavel invalido para esta tarefa.' });
+            }
 
             const result = await db.run(
                 `
@@ -368,7 +383,7 @@ module.exports = {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 `,
                 [
-                    assignedTo,
+                    req.userId,
                     req.userId,
                     assignedTo,
                     taskTeamId,
@@ -419,6 +434,41 @@ module.exports = {
         } catch (error) {
             console.error('[TaskController.today]', error);
             return res.status(500).json({ error: 'Erro ao buscar tarefas de hoje.' });
+        }
+    },
+
+    async week(req, res) {
+        try {
+            const db = await connectDb();
+            const today = new Date().toISOString().split('T')[0];
+            const weekEnd = new Date();
+            weekEnd.setDate(weekEnd.getDate() + 7);
+            const weekEndString = weekEnd.toISOString().split('T')[0];
+            const limit = Math.min(Number(req.query.limit || 5), 10);
+
+            const tasks = await listTasksForUser(db, req.userId, {
+                ...req.query,
+                view: 'calendar',
+                status: 'all'
+            });
+
+            const filtered = tasks
+                .filter((task) =>
+                    task.due_date &&
+                    task.due_date >= today &&
+                    task.due_date <= weekEndString &&
+                    !isDone(task.status)
+                )
+                .sort((taskA, taskB) =>
+                    taskA.due_date.localeCompare(taskB.due_date) ||
+                    PRIORITIES.indexOf(taskB.priority) - PRIORITIES.indexOf(taskA.priority)
+                )
+                .slice(0, limit);
+
+            return res.json(filtered);
+        } catch (error) {
+            console.error('[TaskController.week]', error);
+            return res.status(500).json({ error: 'Erro ao buscar tarefas da semana.' });
         }
     },
 
@@ -492,6 +542,60 @@ module.exports = {
                 return res.status(403).json({ error: 'Sem permissao para alterar esta tarefa.' });
             }
 
+            const nextType = req.body.task_type !== undefined ? normalizeType(req.body.task_type) : task.task_type;
+            let nextProjectId = req.body.project_id !== undefined
+                ? (req.body.project_id || null)
+                : (task.project_id || null);
+            let nextTeamId = req.body.team_id !== undefined
+                ? (req.body.team_id || null)
+                : (task.team_id || null);
+            let nextClientId = req.body.client_id !== undefined
+                ? (req.body.client_id || null)
+                : (task.client_id || null);
+            let nextScope = req.body.scope !== undefined && SCOPES.includes(req.body.scope)
+                ? req.body.scope
+                : (task.scope || 'individual');
+            let nextProject = null;
+
+            if (nextProjectId) {
+                const project = await getProjectAccess(db, req.userId, nextProjectId);
+
+                if (!project) {
+                    return res.status(403).json({ error: 'Voce nao tem permissao para vincular tarefas a este projeto.' });
+                }
+
+                if (nextType === 'financial' && !(await canEditProjectFinancials(db, req.userId, nextProjectId))) {
+                    return res.status(403).json({ error: 'Sem permissao para alterar tarefa financeira neste projeto.' });
+                }
+
+                nextProject = project;
+                nextScope = project.scope === 'team' ? 'team' : 'individual';
+                nextTeamId = project.scope === 'team' ? project.team_id : null;
+                nextClientId = nextClientId || project.client_id || null;
+            } else if (nextTeamId) {
+                if (!(await canEditTeamResource(db, req.userId, nextTeamId))) {
+                    return res.status(403).json({ error: 'Sem permissao para alterar tarefa neste time.' });
+                }
+                nextScope = 'team';
+            } else {
+                nextScope = 'individual';
+            }
+
+            const nextAssignedTo = req.body.assigned_to !== undefined
+                ? (req.body.assigned_to || null)
+                : (task.assigned_to || req.userId);
+
+            if (nextAssignedTo) {
+                const canAssign = await canAssignTask(db, req.userId, nextAssignedTo, {
+                    project: nextProject,
+                    teamId: nextTeamId
+                });
+
+                if (!canAssign) {
+                    return res.status(400).json({ error: 'Responsavel invalido para esta tarefa.' });
+                }
+            }
+
             const fields = [];
             const params = [];
 
@@ -508,6 +612,9 @@ module.exports = {
             }
 
             if (req.body.title !== undefined) {
+                if (!isNonEmptyString(req.body.title, 160)) {
+                    return res.status(400).json({ error: 'Titulo invalido.' });
+                }
                 addField('title', req.body.title || null, 'TEXT');
             }
 
@@ -516,7 +623,25 @@ module.exports = {
             }
 
             if (req.body.task_type !== undefined) {
-                addField('task_type', normalizeType(req.body.task_type), 'TEXT');
+                addField('task_type', nextType, 'TEXT');
+            }
+
+            if (req.body.project_id !== undefined) {
+                addField('project_id', nextProjectId, 'INTEGER');
+                addField('client_id', nextClientId, 'INTEGER');
+                addField('team_id', nextTeamId, 'INTEGER');
+                addField('scope', nextScope, 'TEXT');
+            } else if (req.body.team_id !== undefined) {
+                addField('team_id', nextTeamId, 'INTEGER');
+                addField('scope', nextScope, 'TEXT');
+            }
+
+            if (req.body.client_id !== undefined && req.body.project_id === undefined) {
+                addField('client_id', nextClientId, 'INTEGER');
+            }
+
+            if (req.body.scope !== undefined && req.body.project_id === undefined && req.body.team_id === undefined) {
+                addField('scope', nextScope, 'TEXT');
             }
 
             if (req.body.priority !== undefined) {
@@ -549,10 +674,7 @@ module.exports = {
             }
 
             if (req.body.assigned_to !== undefined) {
-                const assignedTo = req.body.assigned_to || null;
-
-                addField('assigned_to', assignedTo, 'INTEGER');
-                addField('user_id', assignedTo, 'INTEGER');
+                addField('assigned_to', nextAssignedTo, 'INTEGER');
             }
 
             if (!fields.length) {

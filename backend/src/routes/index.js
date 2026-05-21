@@ -72,6 +72,7 @@ routes.delete('/clients/:id', ClientController.destroy);
 // --- PROJETOS ---
 routes.post('/projects', ProjectController.create);
 routes.get('/projects', ProjectController.index);
+routes.get('/projects/warranty-alerts', ProjectController.warrantyAlerts);
 routes.patch('/projects/:id/archive', ProjectController.archive);
 routes.patch('/projects/:id/restore', ProjectController.restore);
 routes.get('/projects/:id/documents', DocumentController.byProject);
@@ -101,6 +102,7 @@ routes.post('/tasks', TaskController.create);
 routes.get('/tasks', TaskController.index);
 routes.get('/tasks/summary', TaskController.summary);
 routes.get('/tasks/today', TaskController.today);
+routes.get('/tasks/week', TaskController.week);
 routes.get('/tasks/project/:project_id', TaskController.filterByProject);
 routes.put('/tasks/:id', TaskController.update);
 routes.patch('/tasks/:id/status', TaskController.updateStatus);

@@ -81,6 +81,177 @@ $bg-card: #ffffff;
     margin-bottom: 14px;
   }
 
+  .dashboard-week-section {
+    margin-bottom: 28px;
+
+    .section-heading {
+      align-items: flex-start;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+
+      p {
+        color: $text-light;
+        font-size: 0.86rem;
+        margin-top: -8px;
+      }
+
+      a {
+        background: $earth-brown;
+        border-radius: 999px;
+        color: #fff;
+        font-size: 0.82rem;
+        font-weight: 800;
+        padding: 8px 13px;
+        text-decoration: none;
+        white-space: nowrap;
+
+        &:hover {
+          background: $leaf-green;
+        }
+      }
+    }
+  }
+
+  .dashboard-warranty-section {
+    margin-bottom: 28px;
+
+    .section-heading {
+      margin-bottom: 14px;
+
+      p {
+        color: $text-light;
+        font-size: 0.86rem;
+        margin-top: -8px;
+      }
+    }
+  }
+
+  .week-task-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .week-task-card {
+    background: $bg-card;
+    border: 1px solid #eaddd7;
+    border-left: 4px solid $leaf-green;
+    border-radius: 8px;
+    display: grid;
+    gap: 12px;
+    min-height: 170px;
+    padding: 14px;
+
+    &.high {
+      border-left-color: $clay-orange;
+    }
+
+    &.urgent {
+      border-left-color: #c24141;
+    }
+
+    strong {
+      color: $earth-brown;
+      display: block;
+      font-size: 1rem;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+
+    span {
+      color: $text-light;
+      font-size: 0.8rem;
+    }
+
+    .week-task-meta {
+      align-content: start;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+
+      span {
+        background: $sand-bg;
+        border-radius: 999px;
+        color: $earth-brown;
+        font-weight: 700;
+        padding: 4px 8px;
+      }
+    }
+
+    button {
+      align-self: end;
+      background: $leaf-green;
+      border: 1px solid $leaf-green;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 800;
+      padding: 9px 12px;
+
+      &:hover {
+        filter: brightness(0.95);
+      }
+    }
+  }
+
+  .warranty-alert-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .warranty-alert-card {
+    align-items: center;
+    background: $bg-card;
+    border: 1px solid #eaddd7;
+    border-left: 4px solid #7c5cc4;
+    border-radius: 8px;
+    color: inherit;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    text-decoration: none;
+
+    &.overdue {
+      border-left-color: #c24141;
+    }
+
+    &:hover {
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+      transform: translateY(-1px);
+    }
+
+    strong {
+      color: $earth-brown;
+      display: block;
+      font-size: 0.98rem;
+      margin-bottom: 4px;
+    }
+
+    span {
+      color: $text-light;
+      font-size: 0.82rem;
+    }
+
+    .warranty-alert-meta {
+      align-items: flex-end;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      text-align: right;
+
+      b {
+        background: $sand-bg;
+        border-radius: 999px;
+        color: $earth-brown;
+        font-size: 0.78rem;
+        padding: 4px 8px;
+        white-space: nowrap;
+      }
+    }
+  }
+
   .loading-text {
     color: $leaf-green;
     font-size: 1.1rem;
@@ -178,6 +349,11 @@ $bg-card: #ffffff;
       color: $text-light;
       font-size: 1.05rem;
     }
+
+    &.compact {
+      grid-column: 1 / -1;
+      padding: 28px 18px;
+    }
   }
 }
 
@@ -191,9 +367,76 @@ $bg-card: #ffffff;
       gap: 16px;
     }
 
+    .dashboard-week-section .section-heading {
+      flex-direction: column;
+    }
+
+    .warranty-alert-card {
+      align-items: flex-start;
+      flex-direction: column;
+
+      .warranty-alert-meta {
+        align-items: flex-start;
+        text-align: left;
+      }
+    }
+
     .task-list li {
       align-items: flex-start;
       flex-direction: column;
+    }
+  }
+}
+
+body[data-theme='dark'] {
+  .dashboard-container {
+    .dashboard-header {
+      border-color: rgba(255, 255, 255, 0.1);
+
+      h1 {
+        color: #f4f1ea;
+      }
+
+      p {
+        color: #c8c1b7;
+      }
+    }
+
+    .dashboard-section-title,
+    .week-task-card strong,
+    .dashboard-task-summary article strong {
+      color: #f4f1ea;
+    }
+
+    .dashboard-task-summary article,
+    .week-task-card,
+    .warranty-alert-card,
+    .task-list li,
+    .empty-state {
+      background: #18211c;
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+    }
+
+    .dashboard-task-summary article span,
+    .dashboard-week-section .section-heading p,
+    .dashboard-warranty-section .section-heading p,
+    .week-task-card span,
+    .warranty-alert-card span,
+    .task-list li .task-info span,
+    .empty-state p {
+      color: #c8c1b7;
+    }
+
+    .week-task-card .week-task-meta span,
+    .warranty-alert-card .warranty-alert-meta b {
+      background: #162019;
+      color: #f4f1ea;
+    }
+
+    .task-list li .task-info strong,
+    .warranty-alert-card strong {
+      color: #f4f1ea;
     }
   }
 }

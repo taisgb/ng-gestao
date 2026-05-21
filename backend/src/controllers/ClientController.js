@@ -1,6 +1,7 @@
 const connectDb = require('../config/database');
 const { isEmail, isNonEmptyString, normalizeEmail } = require('../utils/validators');
 const {
+    canEditClient,
     canEditTeamResource,
     canViewClientSensitiveData,
     canViewProject,
@@ -26,7 +27,7 @@ async function getClientAccess(db, clientId, userId) {
     const canView = await canViewTeamResource(db, userId, client.team_id);
     if (!canView) return null;
 
-    const canEdit = await canEditTeamResource(db, userId, client.team_id);
+    const canEdit = await canEditClient(db, userId, client);
     return { ...client, can_edit: canEdit, can_view_financials: canEdit };
 }
 

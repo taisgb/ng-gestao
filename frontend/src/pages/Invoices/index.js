@@ -70,6 +70,11 @@ export default function Invoices() {
     return invoices.filter(invoice => invoice.status === filterStatus);
   }, [invoices, filterStatus]);
 
+  const financialProjects = useMemo(
+    () => projects.filter(project => project.can_view_financials !== false),
+    [projects]
+  );
+
   const summary = useMemo(() => {
     return visibleInvoices.reduce((acc, invoice) => {
       acc.total += Number(invoice.amount || 0);
@@ -292,7 +297,7 @@ export default function Invoices() {
           </select>
           <select value={form.project_id} onChange={e => setForm({ ...form, project_id: e.target.value })}>
             <option value="">Sem projeto</option>
-            {projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
+            {financialProjects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
           </select>
           <button type="submit">Registrar NF</button>
         </form>
@@ -319,36 +324,42 @@ export default function Invoices() {
           </header>
 
           <form onSubmit={handleCreateInvoiceDocument}>
-            <input
-              value={invoiceDocumentForm.file_name}
-              onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, file_name: e.target.value })}
-              placeholder="Nome do documento"
-              required
-            />
-            <input
-              value={invoiceDocumentForm.file_url}
-              onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, file_url: e.target.value })}
-              placeholder="https://..."
-              required
-            />
-            <select value={invoiceDocumentForm.provider} onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, provider: e.target.value })}>
-              <option value="drive">Drive</option>
-              <option value="external">Externo</option>
-              <option value="other">Outro</option>
-            </select>
-            <select value={invoiceDocumentForm.document_type} onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, document_type: e.target.value })}>
-              <option value="invoice">Nota fiscal</option>
-              <option value="receipt">Comprovante</option>
-              <option value="boleto">Boleto</option>
-              <option value="folder">Pasta</option>
-              <option value="other">Outro</option>
-            </select>
-            <input
-              value={invoiceDocumentForm.description}
-              onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, description: e.target.value })}
-              placeholder="Descricao"
-            />
-            <button type="submit">Adicionar</button>
+            {selectedInvoice.can_edit ? (
+              <>
+                <input
+                  value={invoiceDocumentForm.file_name}
+                  onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, file_name: e.target.value })}
+                  placeholder="Nome do documento"
+                  required
+                />
+                <input
+                  value={invoiceDocumentForm.file_url}
+                  onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, file_url: e.target.value })}
+                  placeholder="https://..."
+                  required
+                />
+                <select value={invoiceDocumentForm.provider} onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, provider: e.target.value })}>
+                  <option value="drive">Drive</option>
+                  <option value="external">Externo</option>
+                  <option value="other">Outro</option>
+                </select>
+                <select value={invoiceDocumentForm.document_type} onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, document_type: e.target.value })}>
+                  <option value="invoice">Nota fiscal</option>
+                  <option value="receipt">Comprovante</option>
+                  <option value="boleto">Boleto</option>
+                  <option value="folder">Pasta</option>
+                  <option value="other">Outro</option>
+                </select>
+                <input
+                  value={invoiceDocumentForm.description}
+                  onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, description: e.target.value })}
+                  placeholder="Descricao"
+                />
+                <button type="submit">Adicionar</button>
+              </>
+            ) : (
+              <p className="readonly-note">Voce pode visualizar os documentos desta NF, mas nao pode anexar novos links.</p>
+            )}
           </form>
 
           <div className="invoice-documents-list">
@@ -380,11 +391,15 @@ export default function Invoices() {
             </div>
             <div className="invoice-actions">
               <strong>{formatCurrency(invoice.amount)}</strong>
-              <select value={invoice.status} onChange={e => handleStatus(invoice, e.target.value)}>
+              <select value={invoice.status} disabled={!invoice.can_edit} onChange={e => handleStatus(invoice, e.target.value)}>
                 {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
               </select>
               <button onClick={() => loadInvoiceDocuments(invoice)}>Docs</button>
-              <button onClick={() => handleDelete(invoice.id)}>Remover</button>
+              {invoice.can_edit ? (
+                <button onClick={() => handleDelete(invoice.id)}>Remover</button>
+              ) : (
+                <button disabled>Somente leitura</button>
+              )}
             </div>
           </article>
         ))}

@@ -92,6 +92,9 @@ const POSTGRES_SCHEMA = `
         payment_status TEXT DEFAULT 'pendente',
         amount_paid DOUBLE PRECISION DEFAULT 0,
         deadline DATE,
+        warranty_start_date DATE,
+        warranty_days INTEGER DEFAULT 0,
+        warranty_end_date DATE,
         archived INTEGER DEFAULT 0,
         archived_at TIMESTAMP
     );
@@ -276,6 +279,8 @@ const POSTGRES_SCHEMA = `
         source TEXT DEFAULT 'manual',
         origin_label TEXT,
         financial_type TEXT,
+        financial_scope TEXT DEFAULT 'personal',
+        recurrence_frequency TEXT,
         project_id INTEGER REFERENCES projects(id),
         team_id INTEGER REFERENCES teams(id),
         transaction_id INTEGER REFERENCES transactions(id),
@@ -446,6 +451,9 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'projects', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'projects', 'scope', "TEXT DEFAULT 'individual'");
     await ensurePostgresColumn(db, 'projects', 'archived_at', 'TIMESTAMP');
+    await ensurePostgresColumn(db, 'projects', 'warranty_start_date', 'DATE');
+    await ensurePostgresColumn(db, 'projects', 'warranty_days', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'projects', 'warranty_end_date', 'DATE');
     await ensurePostgresColumn(db, 'project_members', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
     await ensurePostgresColumn(db, 'services', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'services', 'scope', "TEXT DEFAULT 'individual'");
@@ -477,6 +485,8 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'personal_transactions', 'payment_due_date', 'DATE');
     await ensurePostgresColumn(db, 'personal_transactions', 'paid_at', 'DATE');
     await ensurePostgresColumn(db, 'personal_transactions', 'financial_type', 'TEXT');
+    await ensurePostgresColumn(db, 'personal_transactions', 'financial_scope', "TEXT DEFAULT 'personal'");
+    await ensurePostgresColumn(db, 'personal_transactions', 'recurrence_frequency', 'TEXT');
     await ensurePostgresColumn(db, 'personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'personal_transactions', 'archived', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'documents', 'team_id', 'INTEGER REFERENCES teams(id)');
@@ -570,6 +580,9 @@ async function connectDb() {
             payment_status TEXT DEFAULT 'pendente', 
             amount_paid REAL DEFAULT 0, 
             deadline DATE,
+            warranty_start_date DATE,
+            warranty_days INTEGER DEFAULT 0,
+            warranty_end_date DATE,
             archived INTEGER DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (client_id) REFERENCES clients(id)
@@ -833,6 +846,8 @@ async function connectDb() {
             source TEXT DEFAULT 'manual',
             origin_label TEXT,
             financial_type TEXT,
+            financial_scope TEXT DEFAULT 'personal',
+            recurrence_frequency TEXT,
             project_id INTEGER,
             team_id INTEGER,
             transaction_id INTEGER,
@@ -906,6 +921,9 @@ async function connectDb() {
     await ensureColumn('projects', 'team_id', 'INTEGER');
     await ensureColumn('projects', 'scope', "TEXT DEFAULT 'individual'");
     await ensureColumn('projects', 'archived_at', 'DATETIME');
+    await ensureColumn('projects', 'warranty_start_date', 'DATE');
+    await ensureColumn('projects', 'warranty_days', 'INTEGER DEFAULT 0');
+    await ensureColumn('projects', 'warranty_end_date', 'DATE');
     await ensureColumn('project_members', 'updated_at', 'DATETIME');
     await ensureColumn('services', 'team_id', 'INTEGER');
     await ensureColumn('services', 'scope', "TEXT DEFAULT 'individual'");
@@ -937,6 +955,8 @@ async function connectDb() {
     await ensureColumn('personal_transactions', 'payment_due_date', 'DATE');
     await ensureColumn('personal_transactions', 'paid_at', 'DATE');
     await ensureColumn('personal_transactions', 'financial_type', 'TEXT');
+    await ensureColumn('personal_transactions', 'financial_scope', "TEXT DEFAULT 'personal'");
+    await ensureColumn('personal_transactions', 'recurrence_frequency', 'TEXT');
     await ensureColumn('personal_transactions', 'is_recurring', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'updated_at', 'DATETIME');
