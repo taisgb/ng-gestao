@@ -6,7 +6,7 @@ module.exports = {
         const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
         if (!process.env.STRIPE_SECRET_KEY || !endpointSecret) {
-            return res.status(500).send('Webhook Stripe sem configuracao.');
+            return res.status(500).send('Webhook Stripe sem configuração.');
         }
 
         let event;

@@ -120,6 +120,11 @@ $line: #ece7df;
           background: #fff4e6;
           color: #a15b17;
         }
+
+        &.restricted {
+          background: #edf2f7;
+          color: $ink-blue;
+        }
       }
     }
 
@@ -730,6 +735,18 @@ $line: #ece7df;
       font-size: 0.78rem;
       padding: 6px 8px;
     }
+  }
+
+  .readonly-note {
+    background: #edf2f7;
+    border: 1px solid #d7e2ee;
+    border-radius: 8px;
+    color: $ink-blue;
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.4;
+    margin: 0 0 14px;
+    padding: 10px 12px;
   }
 
   .notes-section {
@@ -1572,6 +1589,13 @@ body[data-theme='dark'] {
       background: #1f3324 !important;
       border-color: rgba(168, 217, 155, 0.34) !important;
       color: #a8d99b !important;
+    }
+
+    .readonly-note,
+    .split-header span.restricted {
+      background: #243129 !important;
+      border-color: rgba(255, 255, 255, 0.12) !important;
+      color: #c8c1b7 !important;
     }
   }
 }

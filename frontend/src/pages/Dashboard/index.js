@@ -12,7 +12,7 @@ function isDoneStatus(status) {
 const summaryCards = [
   ['pending', 'Tarefas pendentes'],
   ['overdue', 'Tarefas atrasadas'],
-  ['completed', 'Concluidas'],
+  ['completed', 'Concluídas'],
   ['week', 'Da semana'],
   ['financial_open', 'Financeiras abertas']
 ];
@@ -102,7 +102,7 @@ export default function Dashboard() {
           <div className="section-heading">
             <div>
               <h2 className="dashboard-section-title">Tarefas da semana</h2>
-              <p>Prioridades com prazo nos proximos 7 dias.</p>
+              <p>Prioridades com prazo nos próximos 7 dias.</p>
             </div>
             <Link to="/tarefas">Ver mais</Link>
           </div>
@@ -118,7 +118,7 @@ export default function Dashboard() {
                   <div className="week-task-meta">
                     <span>{task.due_date ? new Date(task.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Sem prazo'}</span>
                     <span>{priorityLabels[task.priority] || task.priority}</span>
-                    <span>{task.assigned_name || 'Sem responsavel'}</span>
+                    <span>{task.assigned_name || 'Sem responsável'}</span>
                   </div>
                   <button type="button" onClick={() => handleCompleteWeekTask(task)}>
                     Concluir
@@ -137,7 +137,7 @@ export default function Dashboard() {
           <div className="section-heading">
             <div>
               <h2 className="dashboard-section-title">Garantias de projetos</h2>
-              <p>Projetos em garantia vencida ou vencendo nos proximos 15 dias.</p>
+              <p>Projetos em garantia vencida ou vencendo nos próximos 15 dias.</p>
             </div>
           </div>
 
@@ -198,7 +198,7 @@ export default function Dashboard() {
                     <button
                       className="btn-complete"
                       onClick={() => handleCompleteTask(task)}
-                      title={isDone ? 'Reabrir tarefa' : 'Marcar como concluida'}
+                      title={isDone ? 'Reabrir tarefa' : 'Marcar como concluída'}
                       type="button"
                     >
                       {isDone ? 'Reabrir' : 'OK'}

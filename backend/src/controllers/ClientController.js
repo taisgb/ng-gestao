@@ -39,13 +39,13 @@ module.exports = {
             const userId = req.userId;
 
             if (!isNonEmptyString(name, 160) || (email && !isEmail(email))) {
-                return res.status(400).json({ error: 'Nome do cliente ou email invalido.' });
+                return res.status(400).json({ error: 'Nome do cliente ou email inválido.' });
             }
 
             const db = await connectDb();
 
             if (team_id && !await canEditTeamResource(db, userId, team_id)) {
-                return res.status(403).json({ error: 'Sem permissao para criar cliente neste time.' });
+                return res.status(403).json({ error: 'Sem permissão para criar cliente neste time.' });
             }
 
             const user = await db.get('SELECT plan FROM users WHERE id = ?', [userId]);
@@ -58,7 +58,7 @@ module.exports = {
 
                 if (count.total >= 3) {
                     return res.status(403).json({
-                        error: 'Limite de 3 clientes atingido no plano Free. Faca o upgrade para expandir sua carteira!'
+                        error: 'Limite de 3 clientes atingido no plano Free. Faça o upgrade para expandir sua carteira!'
                     });
                 }
             }
@@ -126,7 +126,7 @@ module.exports = {
             const client = await getClientAccess(db, id, req.userId);
 
             if (!client) {
-                return res.status(404).json({ error: 'Cliente nao encontrado ou acesso negado.' });
+                return res.status(404).json({ error: 'Cliente não encontrado ou acesso negado.' });
             }
 
             return res.json(sanitizeClientForRole(
@@ -147,7 +147,7 @@ module.exports = {
             const client = await getClientAccess(db, id, req.userId);
 
             if (!client) {
-                return res.status(404).json({ error: 'Cliente nao encontrado ou acesso negado.' });
+                return res.status(404).json({ error: 'Cliente não encontrado ou acesso negado.' });
             }
 
             const projects = await db.all(`
@@ -186,19 +186,19 @@ module.exports = {
 
             const client = await getClientAccess(db, id, req.userId);
             if (!client || !client.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para editar este cliente.' });
+                return res.status(403).json({ error: 'Sem permissão para editar este cliente.' });
             }
 
             if (team_id !== undefined && team_id && !await canEditTeamResource(db, req.userId, team_id)) {
-                return res.status(403).json({ error: 'Sem permissao para mover cliente para este time.' });
+                return res.status(403).json({ error: 'Sem permissão para mover cliente para este time.' });
             }
 
             if (name !== undefined && !isNonEmptyString(name, 160)) {
-                return res.status(400).json({ error: 'Nome do cliente invalido.' });
+                return res.status(400).json({ error: 'Nome do cliente inválido.' });
             }
 
             if (email && !isEmail(email)) {
-                return res.status(400).json({ error: 'Email invalido.' });
+                return res.status(400).json({ error: 'Email inválido.' });
             }
 
             const nextTeamId = team_id === undefined ? null : team_id || null;
@@ -237,7 +237,7 @@ module.exports = {
             const client = await getClientAccess(db, id, req.userId);
 
             if (!client || !client.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para arquivar este cliente.' });
+                return res.status(403).json({ error: 'Sem permissão para arquivar este cliente.' });
             }
 
             await db.run('UPDATE clients SET archived = 1 WHERE id = ?', [id]);
@@ -256,7 +256,7 @@ module.exports = {
             const client = await getClientAccess(db, id, req.userId);
 
             if (!client || !client.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para restaurar este cliente.' });
+                return res.status(403).json({ error: 'Sem permissão para restaurar este cliente.' });
             }
 
             await db.run('UPDATE clients SET archived = 0 WHERE id = ?', [id]);

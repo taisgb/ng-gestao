@@ -3,7 +3,7 @@ import api from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import './styles.scss';
 
-const doneStatuses = ['concluido', 'concluído', 'concluÃ­do', 'done'];
+const doneStatuses = ['done'];
 const sourceLabels = {
   operational: 'Projeto',
   financial: 'Financeiro',
@@ -35,13 +35,17 @@ const statusLabels = {
   pendente: 'Pendente',
   pending: 'Pendente',
   'em andamento': 'Em andamento',
-  concluido: 'Concluida',
-  'concluído': 'Concluida',
-  done: 'Concluida'
+  done: 'Concluída'
 };
 
 function isTaskDone(status) {
-  return doneStatuses.includes(status) || String(status || '').toLowerCase().startsWith('conclu');
+  const normalized = String(status || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return doneStatuses.includes(status) || normalized.startsWith('conclu');
+}
+
+function getStatusLabel(status) {
+  if (isTaskDone(status)) return 'Concluída';
+  return statusLabels[status] || status || 'Pendente';
 }
 
 function formatTaskDate(date) {
@@ -129,7 +133,7 @@ export default function Tasks() {
       setFeedback(err.response?.data?.error || 'Erro ao carregar responsaveis.');
     }
 
-    return user?.id ? [{ id: user.id, name: user.name || 'Voce', email: user.email }] : [];
+    return user?.id ? [{ id: user.id, name: user.name || 'Você', email: user.email }] : [];
   }, [user]);
 
   useEffect(() => {
@@ -286,15 +290,15 @@ export default function Tasks() {
         <div className="task-meta">
           <span>{task.due_date ? new Date(task.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Sem prazo'}</span>
           <span>{task.assigned_name || (Number(task.assigned_to) === Number(user?.id) ? 'Você' : 'Sem responsável')}</span>
-          <strong>{done ? 'Concluida' : statusLabels[task.status] || task.status}</strong>
+          <strong>{getStatusLabel(task.status)}</strong>
         </div>
 
         <div className="task-actions">
-          <button onClick={() => patchTask(task, { status: done ? 'pendente' : 'concluído' }, done ? 'Tarefa reaberta.' : 'Tarefa concluida.')}>
+          <button onClick={() => patchTask(task, { status: done ? 'pendente' : 'concluído' }, done ? 'Tarefa reaberta.' : 'Tarefa concluída.')}>
             {done ? 'Reabrir' : 'Concluir'}
           </button>
           <button onClick={() => openEditTask(task)}>Editar</button>
-          <button onClick={() => patchTask(task, { assigned_to: user?.id }, 'Tarefa atribuida a voce.')}>Assumir</button>
+          <button onClick={() => patchTask(task, { assigned_to: user?.id }, 'Tarefa atribuida a você.')}>Assumir</button>
           <input
             type="date"
             defaultValue={task.due_date || ''}
@@ -349,7 +353,7 @@ export default function Tasks() {
           <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
             <option value="pending">Pendente</option>
             <option value="em andamento">Em andamento</option>
-            <option value="done">Concluida</option>
+            <option value="done">Concluída</option>
           </select>
           <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} />
           <select value={form.project_id} onChange={e => setForm({ ...form, project_id: e.target.value, team_id: '' })}>
@@ -361,7 +365,7 @@ export default function Tasks() {
             {teams.map(team => <option key={team.id} value={team.id}>Time: {team.name}</option>)}
           </select>
           <select value={form.assigned_to} onChange={e => setForm({ ...form, assigned_to: e.target.value })}>
-            <option value="">Responsavel: eu</option>
+            <option value="">Responsável: eu</option>
             {assignees.map(assignee => (
               <option key={assignee.id} value={assignee.id}>
                 {assignee.name || assignee.email}
@@ -432,7 +436,7 @@ export default function Tasks() {
                         <div key={task.id} className={`calendar-task-card ${task.priority} ${done ? 'done' : ''}`}>
                           <strong>{task.title}</strong>
                           <span>{task.project_title || task.client_name || sourceLabels[task.task_type] || 'Tarefa'}</span>
-                          <small>{done ? 'Concluida' : priorityLabels[task.priority] || task.priority}</small>
+                          <small>{done ? 'Concluída' : priorityLabels[task.priority] || task.priority}</small>
                         </div>
                       );
                     })}
@@ -458,12 +462,12 @@ export default function Tasks() {
 
             <form onSubmit={handleSaveEdit}>
               <label>
-                Titulo
+                Título
                 <input value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} required />
               </label>
 
               <label>
-                Descricao
+                Descrição
                 <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows="4" />
               </label>
 
@@ -475,7 +479,7 @@ export default function Tasks() {
                     <option value="financial">Financeira</option>
                     <option value="document">Documento</option>
                     <option value="invoice">Nota fiscal</option>
-                    <option value="service">Servico</option>
+                    <option value="service">Serviço</option>
                     <option value="recurring">Recorrente</option>
                   </select>
                 </label>
@@ -495,7 +499,7 @@ export default function Tasks() {
                   <select value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
                     <option value="pending">Pendente</option>
                     <option value="em andamento">Em andamento</option>
-                    <option value="done">Concluida</option>
+                    <option value="done">Concluída</option>
                   </select>
                 </label>
 
@@ -521,9 +525,9 @@ export default function Tasks() {
                 </label>
 
                 <label>
-                  Responsavel
+                  Responsável
                   <select value={editForm.assigned_to} onChange={e => setEditForm({ ...editForm, assigned_to: e.target.value })}>
-                    <option value="">Sem responsavel</option>
+                    <option value="">Sem responsável</option>
                     {editAssignees.map(assignee => (
                       <option key={assignee.id} value={assignee.id}>
                         {assignee.name || assignee.email}
@@ -535,7 +539,7 @@ export default function Tasks() {
 
               <div className="modal-actions">
                 <button type="button" onClick={() => setEditingTask(null)}>Cancelar</button>
-                <button type="submit">Salvar alteracoes</button>
+                <button type="submit">Salvar alterações</button>
               </div>
             </form>
           </section>

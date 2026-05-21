@@ -3,6 +3,25 @@ import api from '../../services/api';
 import './styles.scss';
 
 const STATUS_OPTIONS = ['pendente', 'emitida', 'enviada', 'paga', 'cancelada'];
+const statusLabels = {
+  pendente: 'Pendente',
+  emitida: 'Emitida',
+  enviada: 'Enviada',
+  paga: 'Paga',
+  cancelada: 'Cancelada'
+};
+const documentProviderLabels = { drive: 'Drive', external: 'Externo', other: 'Outro' };
+const documentTypeLabels = {
+  invoice: 'Nota fiscal',
+  receipt: 'Comprovante',
+  contract: 'Contrato',
+  briefing: 'Briefing',
+  artwork: 'Arte',
+  image: 'Imagem',
+  boleto: 'Boleto',
+  folder: 'Pasta',
+  other: 'Outro'
+};
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
@@ -157,7 +176,7 @@ export default function Invoices() {
   }
 
   async function handleArchiveInvoiceDocument(document) {
-    const confirmed = window.confirm('Deseja arquivar este documento? Ele podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este documento? Ele poderá ser restaurado depois.');
     if (!confirmed) return;
 
     try {
@@ -186,14 +205,14 @@ export default function Invoices() {
     try {
       await api.put('/invoices/fiscal-settings', fiscalSettings);
       await loadFiscalData();
-      setFeedback('Configuracao fiscal salva.');
+      setFeedback('Configuração fiscal salva.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao salvar configuracao fiscal.');
+      setFeedback(err.response?.data?.error || 'Erro ao salvar configuração fiscal.');
     }
   }
 
   function exportCsv() {
-    const headers = ['Numero', 'Cliente', 'Descricao', 'Projeto', 'Valor', 'Emissao', 'Status'];
+    const headers = ['Número', 'Cliente', 'Descrição', 'Projeto', 'Valor', 'Emissão', 'Status'];
     const rows = visibleInvoices.map(invoice => [
       invoice.number || '',
       invoice.client_name || '',
@@ -225,7 +244,7 @@ export default function Invoices() {
       <header className="page-header">
         <div>
           <h1>Notas Fiscais</h1>
-          <p>Controle de NFs emitidas, status e exportacao para planilha.</p>
+          <p>Controle de NFs emitidas, status e exportação para planilha.</p>
         </div>
         <button onClick={exportCsv}>Exportar planilha</button>
       </header>
@@ -277,23 +296,23 @@ export default function Invoices() {
           <div style={{ width: `${Math.min(100, Number(fiscalSummary?.used_percentage || 0))}%` }} />
         </div>
         <p>
-          Voce usou {Number(fiscalSummary?.used_percentage || 0).toFixed(2)}% do limite anual.
-          {' '}Ainda restam {formatCurrency(fiscalSummary?.remaining_limit)} ate o limite.
+          Você usou {Number(fiscalSummary?.used_percentage || 0).toFixed(2)}% do limite anual.
+          {' '}Ainda restam {formatCurrency(fiscalSummary?.remaining_limit)} até o limite.
         </p>
-        {fiscalSummary?.alert_level === 'warning' && <strong>Atencao: voce esta proximo do limite anual.</strong>}
-        {fiscalSummary?.alert_level === 'danger' && <strong>Alerta: voce esta muito proximo do limite anual.</strong>}
+        {fiscalSummary?.alert_level === 'warning' && <strong>Atenção: você está próximo do limite anual.</strong>}
+        {fiscalSummary?.alert_level === 'danger' && <strong>Alerta: você está muito próximo do limite anual.</strong>}
         {fiscalSummary?.alert_level === 'exceeded' && <strong>Limite anual ultrapassado.</strong>}
       </section>
 
       <section className="invoice-form-panel">
         <form onSubmit={handleCreate}>
-          <input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} placeholder="Numero da NF" />
+          <input value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} placeholder="Número da NF" />
           <input value={form.client_name} onChange={e => setForm({ ...form, client_name: e.target.value })} placeholder="Cliente" required />
-          <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descricao" />
+          <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descrição" />
           <input type="number" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="Valor" required />
           <input type="date" value={form.issue_date} onChange={e => setForm({ ...form, issue_date: e.target.value })} required />
           <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-            {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+            {STATUS_OPTIONS.map(status => <option key={status} value={status}>{statusLabels[status]}</option>)}
           </select>
           <select value={form.project_id} onChange={e => setForm({ ...form, project_id: e.target.value })}>
             <option value="">Sem projeto</option>
@@ -309,7 +328,7 @@ export default function Invoices() {
         </select>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
           <option value="">Todos os status</option>
-          {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+          {STATUS_OPTIONS.map(status => <option key={status} value={status}>{statusLabels[status]}</option>)}
         </select>
       </div>
 
@@ -353,12 +372,12 @@ export default function Invoices() {
                 <input
                   value={invoiceDocumentForm.description}
                   onChange={e => setInvoiceDocumentForm({ ...invoiceDocumentForm, description: e.target.value })}
-                  placeholder="Descricao"
+                  placeholder="Descrição"
                 />
                 <button type="submit">Adicionar</button>
               </>
             ) : (
-              <p className="readonly-note">Voce pode visualizar os documentos desta NF, mas nao pode anexar novos links.</p>
+              <p className="readonly-note">Você pode visualizar os documentos desta NF, mas não pode anexar novos links.</p>
             )}
           </form>
 
@@ -367,7 +386,7 @@ export default function Invoices() {
               <article key={document.id} className={document.archived === 1 ? 'archived' : ''}>
                 <div>
                   <strong>{document.file_name}</strong>
-                  <span>{document.document_type} - {document.provider}{document.archived === 1 ? ' - Arquivado' : ''}</span>
+                  <span>{documentTypeLabels[document.document_type] || 'Outro'} - {documentProviderLabels[document.provider] || 'Outro'}{document.archived === 1 ? ' - Arquivado' : ''}</span>
                 </div>
                 <div>
                   <a href={document.file_url} target="_blank" rel="noreferrer">Abrir</a>
@@ -385,14 +404,14 @@ export default function Invoices() {
         {visibleInvoices.map(invoice => (
           <article key={invoice.id} className={`invoice-card ${invoice.status}`}>
             <div>
-              <strong>{invoice.number ? `NF ${invoice.number}` : 'NF sem numero'}</strong>
+              <strong>{invoice.number ? `NF ${invoice.number}` : 'NF sem número'}</strong>
               <p>{invoice.client_name} - {invoice.project_title || 'Sem projeto'}</p>
-              <span>{invoice.description || 'Sem descricao'}</span>
+              <span>{invoice.description || 'Sem descrição'}</span>
             </div>
             <div className="invoice-actions">
               <strong>{formatCurrency(invoice.amount)}</strong>
               <select value={invoice.status} disabled={!invoice.can_edit} onChange={e => handleStatus(invoice, e.target.value)}>
-                {STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                {STATUS_OPTIONS.map(status => <option key={status} value={status}>{statusLabels[status]}</option>)}
               </select>
               <button onClick={() => loadInvoiceDocuments(invoice)}>Docs</button>
               {invoice.can_edit ? (

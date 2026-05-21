@@ -31,7 +31,7 @@ export default function Services() {
       setServices(servicesRes.data);
       setTeams(teamsRes.data);
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao carregar servicos.');
+      setFeedback(err.response?.data?.error || 'Erro ao carregar serviços.');
     }
   }, [statusFilter]);
 
@@ -69,29 +69,29 @@ export default function Services() {
     try {
       if (editingService) {
         await api.put(`/services/${editingService.id}`, payload);
-        setFeedback('Servico atualizado.');
+        setFeedback('Serviço atualizado.');
       } else {
         await api.post('/services', payload);
-        setFeedback('Servico cadastrado.');
+        setFeedback('Serviço cadastrado.');
       }
 
       resetForm();
       await loadServices();
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao salvar servico.');
+      setFeedback(err.response?.data?.error || 'Erro ao salvar serviço.');
     }
   }
 
   async function handleArchive(service) {
-    const confirmed = window.confirm('Deseja arquivar este servico? Ele podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este serviço? Ele poderá ser restaurado depois.');
     if (!confirmed) return;
 
     try {
       await api.patch(`/services/${service.id}/archive`);
       await loadServices();
-      setFeedback('Servico arquivado.');
+      setFeedback('Serviço arquivado.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao arquivar servico.');
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar serviço.');
     }
   }
 
@@ -99,9 +99,9 @@ export default function Services() {
     try {
       await api.patch(`/services/${service.id}/restore`);
       await loadServices();
-      setFeedback('Servico restaurado com sucesso.');
+      setFeedback('Serviço restaurado com sucesso.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao restaurar servico.');
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar serviço.');
     }
   }
 
@@ -112,8 +112,8 @@ export default function Services() {
     <div className="services-container">
       <header className="page-header">
         <div>
-          <h1>Servicos</h1>
-          <p>Catalogo de categorias que voce usa nos projetos e propostas.</p>
+          <h1>Serviços</h1>
+          <p>Catálogo de categorias que você usa nos projetos e propostas.</p>
         </div>
       </header>
 
@@ -121,12 +121,12 @@ export default function Services() {
 
       <section className="service-form">
         <form onSubmit={handleSubmit}>
-          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nome do servico" required />
-          <input value={form.default_price} onChange={e => setForm({ ...form, default_price: e.target.value })} placeholder="Valor padrao" />
-          <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descricao curta" />
+          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nome do serviço" required />
+          <input value={form.default_price} onChange={e => setForm({ ...form, default_price: e.target.value })} placeholder="Valor padrão" />
+          <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descrição curta" />
           <select value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value, team_id: '' })}>
-            <option value="individual">Servico individual</option>
-            <option value="team">Servico de time</option>
+            <option value="individual">Serviço individual</option>
+            <option value="team">Serviço de time</option>
           </select>
           {form.scope === 'team' && (
             <select value={form.team_id} onChange={e => setForm({ ...form, team_id: e.target.value })} required>
@@ -134,8 +134,8 @@ export default function Services() {
               {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
             </select>
           )}
-          <button type="submit">{editingService ? 'Salvar alteracoes' : 'Adicionar'}</button>
-          {editingService && <button type="button" className="btn-cancel" onClick={resetForm}>Cancelar edicao</button>}
+          <button type="submit">{editingService ? 'Salvar alterações' : 'Adicionar'}</button>
+          {editingService && <button type="button" className="btn-cancel" onClick={resetForm}>Cancelar edição</button>}
         </form>
       </section>
 
@@ -161,7 +161,7 @@ export default function Services() {
           <article key={service.id} className={`service-card ${service.archived === 1 ? 'archived' : ''}`}>
             <div>
               <strong>{service.name}</strong>
-              <p>{service.description || 'Sem descricao'}</p>
+              <p>{service.description || 'Sem descrição'}</p>
               <div className="service-badges">
                 <small>{service.team_id ? `Time: ${service.team_name}` : 'Individual'}</small>
                 {service.archived === 1 && <small className="archived-badge">Arquivado</small>}
@@ -181,7 +181,7 @@ export default function Services() {
             </div>
           </article>
         ))}
-        {services.length === 0 && <p className="empty-msg">Nenhum servico encontrado.</p>}
+        {services.length === 0 && <p className="empty-msg">Nenhum serviço encontrado.</p>}
       </section>
     </div>
   );

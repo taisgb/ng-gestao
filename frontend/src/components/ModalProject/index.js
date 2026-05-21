@@ -14,6 +14,13 @@ const emptyForm = {
   team_id: '',
   member_ids: []
 };
+const ROLE_LABELS = {
+  owner: 'Dono',
+  admin: 'Administrador',
+  gestor: 'Gestor',
+  financeiro: 'Financeiro',
+  member: 'Colaborador'
+};
 
 export default function ModalProject({ isOpen, onClose, onSuccess }) {
   const { user } = useAuth();
@@ -36,7 +43,7 @@ export default function ModalProject({ isOpen, onClose, onSuccess }) {
         setClients(clientsRes.data);
         setTeams(teamsRes.data);
       } catch (err) {
-        setError('Nao foi possivel carregar clientes e times.');
+        setError('Não foi possível carregar clientes e times.');
       }
     }
 
@@ -60,7 +67,7 @@ export default function ModalProject({ isOpen, onClose, onSuccess }) {
           )
         );
       } catch (err) {
-        setError('Nao foi possivel carregar os membros do time.');
+        setError('Não foi possível carregar os membros do time.');
       }
     }
 
@@ -127,7 +134,7 @@ export default function ModalProject({ isOpen, onClose, onSuccess }) {
 
         <form onSubmit={handleSubmit}>
           <div className="input-group">
-            <label>Titulo do Projeto *</label>
+            <label>Título do Projeto *</label>
             <input
               required
               placeholder="Ex: Identidade Visual - Cafe do Porto"
@@ -172,7 +179,7 @@ export default function ModalProject({ isOpen, onClose, onSuccess }) {
             </div>
             <p className="scope-hint">
               {formData.scope === 'individual'
-                ? 'Este projeto sera visivel apenas para voce.'
+                ? 'Este projeto será visível apenas para você.'
                 : 'Escolha quais membros participarao deste projeto.'}
             </p>
           </div>
@@ -205,7 +212,7 @@ export default function ModalProject({ isOpen, onClose, onSuccess }) {
                           onChange={() => toggleMember(member.user_id)}
                         />
                         <span>{member.name || member.email}</span>
-                        <small>{member.role}</small>
+                        <small>{ROLE_LABELS[member.role] || member.role}</small>
                       </label>
                     ))}
                     {teamMembers.length === 0 && <p>Nenhum outro membro ativo neste time.</p>}

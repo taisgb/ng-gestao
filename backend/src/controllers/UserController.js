@@ -25,14 +25,14 @@ module.exports = {
             const email = normalizeEmail(req.body.email);
 
             if (!isNonEmptyString(name, 120) || !isEmail(email) || !isNonEmptyString(password, 128) || password.length < 8) {
-                return res.status(400).json({ error: 'Informe nome, email valido e senha com pelo menos 8 caracteres.' });
+                return res.status(400).json({ error: 'Informe nome, email válido e senha com pelo menos 8 caracteres.' });
             }
 
             const db = await connectDb();
 
             const userExists = await db.get('SELECT id FROM users WHERE email = ?', [email]);
             if (userExists) {
-                return res.status(400).json({ error: 'Este email ja esta em uso.' });
+                return res.status(400).json({ error: 'Este email já está em uso.' });
             }
 
             const usersCount = await db.get('SELECT COUNT(*) as total FROM users');
@@ -84,7 +84,7 @@ module.exports = {
             );
 
             if (!user) {
-                return res.status(404).json({ error: 'Utilizador nao encontrado.' });
+                return res.status(404).json({ error: 'Usuário não encontrado.' });
             }
 
             return res.json(user);
@@ -100,11 +100,11 @@ module.exports = {
             const email = req.body.email === undefined ? undefined : normalizeEmail(req.body.email);
 
             if (name !== undefined && !isNonEmptyString(name, 120)) {
-                return res.status(400).json({ error: 'Nome invalido.' });
+                return res.status(400).json({ error: 'Nome inválido.' });
             }
 
             if (email !== undefined && !isEmail(email)) {
-                return res.status(400).json({ error: 'Email invalido.' });
+                return res.status(400).json({ error: 'Email inválido.' });
             }
 
             if (password !== undefined && (!isNonEmptyString(password, 128) || password.length < 8)) {
@@ -112,7 +112,7 @@ module.exports = {
             }
 
             if (role_title !== undefined && role_title !== '' && !isNonEmptyString(role_title, 120)) {
-                return res.status(400).json({ error: 'Funcao invalida.' });
+                return res.status(400).json({ error: 'Função inválida.' });
             }
 
             const db = await connectDb();
@@ -120,7 +120,7 @@ module.exports = {
             if (email !== undefined) {
                 const existing = await db.get('SELECT id FROM users WHERE email = ? AND id != ?', [email, req.userId]);
                 if (existing) {
-                    return res.status(400).json({ error: 'Este email ja esta em uso.' });
+                    return res.status(400).json({ error: 'Este email já está em uso.' });
                 }
             }
 
@@ -160,7 +160,7 @@ module.exports = {
             const { newPlan } = req.body;
 
             if (!isEmail(email) || !ALLOWED_PLANS.includes(newPlan)) {
-                return res.status(400).json({ error: 'Email ou plano invalido.' });
+                return res.status(400).json({ error: 'Email ou plano inválido.' });
             }
 
             const db = await connectDb();
@@ -172,7 +172,7 @@ module.exports = {
 
             const target = await db.get('SELECT id, is_super_admin FROM users WHERE email = ?', [email]);
             if (target?.is_super_admin === 1 && newPlan !== 'admin') {
-                return res.status(403).json({ error: 'Super admin nao pode ser rebaixado.' });
+                return res.status(403).json({ error: 'Super admin não pode ser rebaixado.' });
             }
 
             const result = await db.run(
@@ -181,10 +181,10 @@ module.exports = {
             );
 
             if (result.changes === 0) {
-                return res.status(404).json({ error: 'Utilizador nao encontrado.' });
+                return res.status(404).json({ error: 'Usuário não encontrado.' });
             }
 
-            return res.json({ message: `Plano do utilizador ${email} atualizado para ${newPlan}.` });
+            return res.json({ message: `Plano do usuário ${email} atualizado para ${newPlan}.` });
         } catch (error) {
             console.error('[UserController.promote]', error);
             return res.status(500).json({ error: 'Erro ao atualizar plano.' });
@@ -197,7 +197,7 @@ module.exports = {
             const isAdmin = await ensureAdmin(db, req.userId);
 
             if (!isAdmin) {
-                return res.status(403).json({ error: 'Apenas administradores podem listar usuarios.' });
+                return res.status(403).json({ error: 'Apenas administradores podem listar usuários.' });
             }
 
             const users = await db.all(`
@@ -209,7 +209,7 @@ module.exports = {
             return res.json(users);
         } catch (error) {
             console.error('[UserController.listUsers]', error);
-            return res.status(500).json({ error: 'Erro ao listar usuarios.' });
+            return res.status(500).json({ error: 'Erro ao listar usuários.' });
         }
     },
 
@@ -219,19 +219,19 @@ module.exports = {
             const plan = req.body.plan || 'convidado';
 
             if (!isEmail(email) || !ALLOWED_PLANS.includes(plan)) {
-                return res.status(400).json({ error: 'Email ou categoria invalida.' });
+                return res.status(400).json({ error: 'Email ou categoria inválida.' });
             }
 
             const db = await connectDb();
             const isAdmin = await ensureAdmin(db, req.userId);
 
             if (!isAdmin) {
-                return res.status(403).json({ error: 'Apenas administradores podem convidar usuarios.' });
+                return res.status(403).json({ error: 'Apenas administradores podem convidar usuários.' });
             }
 
             const userExists = await db.get('SELECT id FROM users WHERE email = ?', [email]);
             if (userExists) {
-                return res.status(400).json({ error: 'Este usuario ja possui conta.' });
+                return res.status(400).json({ error: 'Este usuário já possui conta.' });
             }
 
             const result = await db.run(`

@@ -4,11 +4,11 @@ import './styles.scss';
 
 const ROLES = ['admin', 'gestor', 'financeiro', 'member'];
 const ROLE_LABELS = {
-  owner: 'Owner',
-  admin: 'Admin',
+  owner: 'Dono',
+  admin: 'Administrador',
   gestor: 'Gestor',
   financeiro: 'Financeiro',
-  member: 'Membro'
+  member: 'Colaborador'
 };
 
 export default function Teams() {
@@ -106,7 +106,7 @@ export default function Teams() {
   }
 
   async function handleArchiveTeam(team) {
-    const confirmed = window.confirm('Arquivar este time? Os dados nao serao apagados e poderao ser restaurados.');
+    const confirmed = window.confirm('Arquivar este time? Os dados não seráo apagados e poderão ser restaurados.');
     if (!confirmed) return;
 
     try {
@@ -129,17 +129,17 @@ export default function Teams() {
   }
 
   async function handleDeleteTeam(team) {
-    const confirmed = window.confirm('Excluir este time definitivamente? Esta acao so sera permitida se nao houver projetos ativos, membros ativos ou financeiro pendente.');
+    const confirmed = window.confirm('Excluir este time definitivamente? Esta ação só será permitida se não houver projetos ativos, membros ativos ou financeiro pendente.');
     if (!confirmed) return;
 
     try {
       await api.delete(`/teams/${team.id}`);
       await loadTeams();
-      setFeedback('Time excluido.');
+      setFeedback('Time excluído.');
     } catch (err) {
       const blockers = err.response?.data?.blockers;
       if (blockers) {
-        setFeedback(`Nao foi possivel excluir. Projetos ativos: ${blockers.active_projects || 0}. Membros ativos: ${blockers.active_members || 0}. Financeiro pendente: ${blockers.pending_financial_entries || 0}.`);
+        setFeedback(`Não foi possível excluir. Projetos ativos: ${blockers.active_projects || 0}. Membros ativos: ${blockers.active_members || 0}. Financeiro pendente: ${blockers.pending_financial_entries || 0}.`);
         return;
       }
       setFeedback(err.response?.data?.error || 'Erro ao excluir time.');
@@ -155,7 +155,7 @@ export default function Teams() {
       <header className="page-header">
         <div>
           <h1>Times</h1>
-          <p>Equipes que compartilham clientes, projetos, servicos e agenda.</p>
+          <p>Equipes que compartilham clientes, projetos, serviços e agenda.</p>
         </div>
       </header>
 
@@ -172,7 +172,7 @@ export default function Teams() {
           <input
             value={form.description}
             onChange={e => setForm({ ...form, description: e.target.value })}
-            placeholder="Descricao"
+            placeholder="Descrição"
           />
           <button type="submit">Criar time</button>
         </form>
@@ -232,7 +232,7 @@ export default function Teams() {
               <div className="team-title">
                 <div>
                   <h2>{selectedTeam.name}</h2>
-                  <p>{selectedTeam.description || 'Sem descricao'}</p>
+                  <p>{selectedTeam.description || 'Sem descrição'}</p>
                 </div>
                 <div className="team-title-actions">
                   {selectedTeamArchived && <span className="archive-badge">Arquivado</span>}

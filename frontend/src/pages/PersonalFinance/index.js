@@ -24,10 +24,10 @@ const emptyTransaction = {
   is_recurring: false
 };
 
-const incomeCategories = ['Projeto', 'Servico recorrente', 'Consultoria', 'Distribuicao de projeto', 'Reembolso', 'Outros'];
-const expenseCategories = ['Software', 'Assinaturas', 'Trafego pago', 'Equipamentos', 'Banco/cartao', 'Impostos', 'Hospedagem', 'Plugin', 'Dominio', 'Outros'];
-const personalExpenseCategories = ['Assinaturas', 'Alimentacao', 'Transporte', 'Saude', 'Educacao', 'Moradia', 'Lazer', 'Cartao de credito', 'Academia', 'Impostos', 'Outros'];
-const statusLabels = { expected: 'previsto', paid: 'pago', overdue: 'atrasado', canceled: 'cancelado' };
+const incomeCategories = ['Projeto', 'Serviço recorrente', 'Consultoria', 'Distribuição de projeto', 'Reembolso', 'Outros'];
+const expenseCategories = ['Software', 'Assinaturas', 'Tráfego pago', 'Equipamentos', 'Banco/cartão', 'Impostos', 'Hospedagem', 'Plugin', 'Domínio', 'Outros'];
+const personalExpenseCategories = ['Assinaturas', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Moradia', 'Lazer', 'Cartão de crédito', 'Academia', 'Impostos', 'Outros'];
+const statusLabels = { expected: 'Previsto', paid: 'Pago', overdue: 'Atrasado', canceled: 'Cancelado' };
 const financialTypeLabels = {
   revenue: 'Receita / NF',
   payment_received: 'Pagamento recebido',
@@ -42,17 +42,34 @@ const scopeLabels = {
   project: 'Projeto'
 };
 const recurrenceLabels = {
-  monthly: 'mensal',
-  weekly: 'semanal',
-  yearly: 'anual'
+  monthly: 'Mensal',
+  weekly: 'Semanal',
+  yearly: 'Anual'
 };
 const sourceLabels = {
-  project: 'projeto',
-  project_distribution: 'distribuicao',
-  reimbursement: 'reembolso',
-  renegotiation: 'renegociacao',
-  recurring: 'recorrente',
+  project: 'Projeto',
+  project_distribution: 'Distribuição',
+  reimbursement: 'Reembolso',
+  renegotiation: 'Renegociação',
+  recurring: 'Recorrente',
   manual: 'Outro / Manual'
+};
+
+const emptySummary = {
+  bank_balance: 0,
+  gross_revenue_total: 0,
+  expected_month: 0,
+  received: 0,
+  personal_expenses: 0,
+  work_expenses: 0,
+  transfers: 0,
+  own_amount: 0,
+  projected_balance: 0,
+  personal_projected_balance: 0,
+  recurring_expenses: 0,
+  total_debt: 0,
+  current_card_bill: 0,
+  fixed_installments: 0
 };
 
 function parseCurrency(value) {
@@ -103,21 +120,32 @@ export default function PersonalFinance() {
         summaryQuery.set('month', filters.month);
         summaryQuery.set('year', filters.year);
       }
-      const [summaryRes, dashboardRes, transactionsRes, renegotiationsRes] = await Promise.all([
-        api.get(`/personal/summary?${summaryQuery.toString()}`),
-        api.get('/personal/dashboard'),
-        api.get(`/personal/transactions?${query}`),
-        api.get('/personal/renegotiations')
+      const safeGet = async (url, fallback, label) => {
+        try {
+          const response = await api.get(url);
+          return response.data;
+        } catch (err) {
+          console.error(`Erro ao carregar ${label}`, err.response?.data || err);
+          setFeedback(current => current || `Erro ao carregar ${label}. Usando dados zerados temporariamente.`);
+          return fallback;
+        }
+      };
+
+      const [summaryData, dashboardData, transactionsData, renegotiationsData] = await Promise.all([
+        safeGet(`/personal/summary?${summaryQuery.toString()}`, emptySummary, 'resumo pessoal'),
+        safeGet('/personal/dashboard', {}, 'indicadores pessoais'),
+        safeGet(`/personal/transactions?${query}`, [], 'lançamentos pessoais'),
+        safeGet('/personal/renegotiations', [], 'renegociacoes')
       ]);
 
-      setSummary(summaryRes.data);
-      setDashboard(dashboardRes.data);
-      setTransactions(transactionsRes.data);
-      setRenegotiations(renegotiationsRes.data);
+      setSummary({ ...emptySummary, ...summaryData });
+      setDashboard(dashboardData);
+      setTransactions(transactionsData);
+      setRenegotiations(renegotiationsData);
       setStatusForm({
-        total_bank_balance: String(dashboardRes.data.bank_balance || ''),
-        total_debt: String(dashboardRes.data.total_debt || ''),
-        credit_card_bill: String(dashboardRes.data.current_card_bill || '')
+        total_bank_balance: String(dashboardData.bank_balance || ''),
+        total_debt: String(dashboardData.total_debt || ''),
+        credit_card_bill: String(dashboardData.current_card_bill || '')
       });
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao carregar financeiro pessoal.');
@@ -201,15 +229,15 @@ export default function PersonalFinance() {
     try {
       if (editing) {
         await api.put(`/personal/transactions/${editing.id}`, payload);
-        setFeedback('Lancamento atualizado.');
+        setFeedback('Lançamento atualizado.');
       } else {
         await api.post('/personal/transactions', payload);
-        setFeedback('Lancamento criado.');
+        setFeedback('Lançamento criado.');
       }
       resetTransactionForm();
       await loadData();
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao salvar lancamento.');
+      setFeedback(err.response?.data?.error || 'Erro ao salvar lançamento.');
     }
   }
 
@@ -224,15 +252,15 @@ export default function PersonalFinance() {
   }
 
   async function handleArchive(item) {
-    const confirmed = window.confirm('Deseja arquivar este lancamento?');
+    const confirmed = window.confirm('Deseja arquivar este lançamento?');
     if (!confirmed) return;
 
     try {
       await api.delete(`/personal/transactions/${item.id}`);
       await loadData();
-      setFeedback('Lancamento arquivado.');
+      setFeedback('Lançamento arquivado.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao arquivar lancamento.');
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar lançamento.');
     }
   }
 
@@ -270,9 +298,9 @@ export default function PersonalFinance() {
         start_date: new Date().toISOString().split('T')[0]
       });
       await loadData();
-      setFeedback('Renegociacao adicionada.');
+      setFeedback('Renegociação adicionada.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao cadastrar renegociacao.');
+      setFeedback(err.response?.data?.error || 'Erro ao cadastrar renegociação.');
     }
   }
 
@@ -285,7 +313,7 @@ export default function PersonalFinance() {
       <div className="transaction-table">
         <div className="table-head">
           <span>Data</span>
-          <span>Descricao</span>
+          <span>Descrição</span>
           <span>Categoria</span>
           <span>Tipo/Escopo</span>
           <span>{kind === 'income' ? 'Origem' : 'Origem/Forma'}</span>
@@ -313,7 +341,7 @@ export default function PersonalFinance() {
             </div>
           </article>
         ))}
-        {rows.length === 0 && <p className="empty-msg">Nenhum lancamento encontrado.</p>}
+        {rows.length === 0 && <p className="empty-msg">Nenhum lançamento encontrado.</p>}
       </div>
     );
   }
@@ -332,7 +360,7 @@ export default function PersonalFinance() {
       <section className="personal-summary">
         <div className="summary-card"><span>Saldo em bancos</span><strong>{formatCurrency(summary?.bank_balance)}</strong></div>
         <div className="summary-card income"><span>Faturamento total</span><strong>{formatCurrency(summary?.gross_revenue_total)}</strong></div>
-        <div className="summary-card income"><span>Previsto no mes</span><strong>{formatCurrency(summary?.expected_month)}</strong></div>
+        <div className="summary-card income"><span>Previsto no mês</span><strong>{formatCurrency(summary?.expected_month)}</strong></div>
         <div className="summary-card income"><span>Recebido</span><strong>{formatCurrency(summary?.received)}</strong></div>
         <div className="summary-card debt"><span>Despesas pessoais</span><strong>{formatCurrency(summary?.personal_expenses)}</strong></div>
         <div className="summary-card debt"><span>Despesas trabalho</span><strong>{formatCurrency(summary?.work_expenses)}</strong></div>
@@ -341,7 +369,7 @@ export default function PersonalFinance() {
         <div className="summary-card fixed"><span>Saldo previsto</span><strong>{formatCurrency(summary?.projected_balance)}</strong></div>
         <div className="summary-card fixed"><span>Saldo pessoal previsto</span><strong>{formatCurrency(summary?.personal_projected_balance)}</strong></div>
         <div className="summary-card debt"><span>Recorrentes</span><strong>{formatCurrency(summary?.recurring_expenses)}</strong></div>
-        <div className="summary-card debt"><span>Divida total</span><strong>{formatCurrency(summary?.total_debt ?? dashboard?.total_debt)}</strong></div>
+        <div className="summary-card debt"><span>Dívida total</span><strong>{formatCurrency(summary?.total_debt ?? dashboard?.total_debt)}</strong></div>
         <div className="summary-card card-bill"><span>Fatura atual</span><strong>{formatCurrency(summary?.current_card_bill ?? dashboard?.current_card_bill)}</strong></div>
         <div className="summary-card fixed"><span>Parcelas fixas</span><strong>{formatCurrency(summary?.fixed_installments ?? dashboard?.fixed_debts_month)}</strong></div>
       </section>
@@ -391,9 +419,9 @@ export default function PersonalFinance() {
 
       <div className="personal-grid">
         <section className="panel wide">
-          <h2>{editing ? 'Editar lancamento' : 'Novo lancamento'}</h2>
+          <h2>{editing ? 'Editar lançamento' : 'Novo lançamento'}</h2>
           <form onSubmit={handleSaveTransaction}>
-            <input value={transactionForm.description} onChange={e => setTransactionForm({ ...transactionForm, description: e.target.value })} placeholder="Descricao" required />
+            <input value={transactionForm.description} onChange={e => setTransactionForm({ ...transactionForm, description: e.target.value })} placeholder="Descrição" required />
             <select value={transactionForm.type} onChange={e => setTransactionForm({ ...transactionForm, type: e.target.value, category: e.target.value === 'income' ? 'Projeto' : 'Software', financial_type: e.target.value === 'income' ? 'revenue' : 'personal_expense', financial_scope: e.target.value === 'income' ? 'work' : 'personal' })}>
               <option value="income">Receita</option>
               <option value="expense">Despesa</option>
@@ -456,21 +484,21 @@ export default function PersonalFinance() {
                 placeholder="Nome da origem"
               />
             )}
-            <input value={transactionForm.notes} onChange={e => setTransactionForm({ ...transactionForm, notes: e.target.value })} placeholder="Observacao" />
+            <input value={transactionForm.notes} onChange={e => setTransactionForm({ ...transactionForm, notes: e.target.value })} placeholder="Observação" />
             <label className="checkbox-line">
               <input type="checkbox" checked={transactionForm.is_recurring} onChange={e => setTransactionForm({ ...transactionForm, is_recurring: e.target.checked })} />
               Recorrente
             </label>
             {transactionForm.is_recurring && (
               <select value={transactionForm.recurrence_frequency} onChange={e => setTransactionForm({ ...transactionForm, recurrence_frequency: e.target.value })}>
-                <option value="">Frequencia</option>
+                <option value="">Frequência</option>
                 <option value="monthly">Mensal</option>
                 <option value="weekly">Semanal</option>
                 <option value="yearly">Anual</option>
               </select>
             )}
-            <button type="submit">{editing ? 'Salvar alteracoes' : 'Adicionar lancamento'}</button>
-            {editing && <button type="button" className="btn-cancel" onClick={resetTransactionForm}>Cancelar edicao</button>}
+            <button type="submit">{editing ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
+            {editing && <button type="button" className="btn-cancel" onClick={resetTransactionForm}>Cancelar edição</button>}
           </form>
         </section>
 
@@ -479,9 +507,9 @@ export default function PersonalFinance() {
           <form onSubmit={handleSaveStatus}>
             <label>Saldo total em bancos</label>
             <input value={statusForm.total_bank_balance} onChange={e => setStatusForm({ ...statusForm, total_bank_balance: e.target.value })} />
-            <label>Divida total</label>
+            <label>Dívida total</label>
             <input value={statusForm.total_debt} onChange={e => setStatusForm({ ...statusForm, total_debt: e.target.value })} />
-            <label>Fatura do cartao</label>
+            <label>Fatura do cartão</label>
             <input value={statusForm.credit_card_bill} onChange={e => setStatusForm({ ...statusForm, credit_card_bill: e.target.value })} />
             <button type="submit">Salvar indicadores</button>
           </form>
@@ -501,7 +529,7 @@ export default function PersonalFinance() {
       <section className="renegotiations-panel">
         <h2>Renegociacoes</h2>
         <form onSubmit={handleCreateDebt} className="renegotiation-form">
-          <input value={debtForm.description} onChange={e => setDebtForm({ ...debtForm, description: e.target.value })} placeholder="Descricao" required />
+          <input value={debtForm.description} onChange={e => setDebtForm({ ...debtForm, description: e.target.value })} placeholder="Descrição" required />
           <input value={debtForm.installment_value} onChange={e => setDebtForm({ ...debtForm, installment_value: e.target.value })} placeholder="Valor da parcela" required />
           <input type="number" value={debtForm.total_installments} onChange={e => setDebtForm({ ...debtForm, total_installments: e.target.value })} placeholder="Total de parcelas" />
           <input type="date" value={debtForm.start_date} onChange={e => setDebtForm({ ...debtForm, start_date: e.target.value })} required />
@@ -517,7 +545,7 @@ export default function PersonalFinance() {
               <strong>{formatCurrency(item.installment_value)}</strong>
             </article>
           ))}
-          {renegotiations.length === 0 && <p>Nenhuma renegociacao cadastrada.</p>}
+          {renegotiations.length === 0 && <p>Nenhuma renegociação cadastrada.</p>}
         </div>
       </section>
     </div>

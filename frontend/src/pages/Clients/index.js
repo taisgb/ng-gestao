@@ -5,6 +5,33 @@ import { useAuth } from '../../hooks/useAuth';
 import ModalClient from '../../components/ModalClient';
 import './styles.scss';
 
+const documentProviderLabels = { drive: 'Drive', external: 'Externo', other: 'Outro' };
+const documentTypeLabels = {
+  invoice: 'Nota fiscal',
+  receipt: 'Comprovante',
+  contract: 'Contrato',
+  briefing: 'Briefing',
+  artwork: 'Arte',
+  image: 'Imagem',
+  boleto: 'Boleto',
+  folder: 'Pasta',
+  other: 'Outro'
+};
+const projectStatusLabels = {
+  pendente: 'Pendente',
+  aprovado: 'Aprovado',
+  'em andamento': 'Em andamento',
+  concluído: 'Concluído',
+  garantia: 'Garantia'
+};
+
+function getProjectStatusLabel(status) {
+  const normalized = String(status || '').toLowerCase().trim();
+  const normalizedKey = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (normalizedKey.startsWith('conclu')) return 'Concluído';
+  return projectStatusLabels[normalized] || status || 'Pendente';
+}
+
 export default function Clients() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -61,6 +88,11 @@ export default function Clients() {
   const isLimitReached = user?.plan === 'free' && activeClientsCount >= 3;
 
   function startEdit(client) {
+    if (!client.can_edit) {
+      setFeedback('Você tem acesso somente leitura a este cliente.');
+      return;
+    }
+
     setEditingClient(client);
     setEditForm({
       name: client.name || '',
@@ -107,7 +139,7 @@ export default function Clients() {
   async function handleArchive(client) {
     setFeedback('');
 
-    const confirmed = window.confirm('Deseja arquivar este cliente? Ele saira da lista principal, mas podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este cliente? Ele sairá da lista principal, mas poderá ser restaurado depois.');
     if (!confirmed) return;
 
     try {
@@ -161,7 +193,7 @@ export default function Clients() {
   }
 
   async function handleArchiveClientDocument(document) {
-    const confirmed = window.confirm('Deseja arquivar este documento? Ele podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este documento? Ele poderá ser restaurado depois.');
     if (!confirmed) return;
 
     try {
@@ -208,7 +240,7 @@ export default function Clients() {
 
       {isLimitReached && (
         <div className="upgrade-alert">
-          <p>Voce atingiu o limite de 3 clientes do Plano Free.</p>
+          <p>Você atingiu o limite de 3 clientes do Plano Free.</p>
           <button onClick={() => navigate('/upgrade')}>Fazer upgrade</button>
         </div>
       )}
@@ -233,7 +265,7 @@ export default function Clients() {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por nome, contato, email ou telefone"
+          placeholder="Buscar por nome ou dados disponiveis"
         />
       </div>
 
@@ -259,7 +291,7 @@ export default function Clients() {
                 {teams.map(team => <option key={team.id} value={team.id}>{team.name}</option>)}
               </select>
             )}
-            <button type="submit">Salvar alteracoes</button>
+            <button type="submit">Salvar alterações</button>
           </form>
         </section>
       )}
@@ -279,7 +311,10 @@ export default function Clients() {
             </div>
           </header>
           {selectedClient.archived === 1 && (
-            <div className="archived-alert">Este cliente esta arquivado.</div>
+            <div className="archived-alert">Este cliente está arquivado.</div>
+          )}
+          {selectedClient.sensitive_hidden && (
+            <div className="restricted-alert">Dados de contato e fiscais deste cliente estão restritos para o seu papel.</div>
           )}
           <div className="project-filter">
             {['all', 'active', 'archived'].map(filter => (
@@ -299,20 +334,26 @@ export default function Clients() {
                 <article key={project.id}>
                   <div>
                     <strong>{project.title}</strong>
-                    <span>{project.status} {project.archived === 1 ? '- Arquivado' : ''}</span>
+                    <span>{getProjectStatusLabel(project.status)} {project.archived === 1 ? '- Arquivado' : ''}</span>
                   </div>
                   <div>
-                    {project.can_view_financials && <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(project.base_value || 0))}</strong>}
+                    {project.can_view_financials ? (
+                      <strong>{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(project.base_value || 0))}</strong>
+                    ) : (
+                      <small className="restricted-value">Valor restrito</small>
+                    )}
                     {project.archived_at && <small>{new Date(project.archived_at).toLocaleDateString('pt-BR')}</small>}
                   </div>
                 </article>
               ))}
-            {clientProjects.length === 0 && <p className="empty-msg">Nenhum projeto vinculado.</p>}
+            {clientProjects.filter(project => projectFilter === 'all' || (projectFilter === 'archived' ? project.archived === 1 : project.archived !== 1)).length === 0 && (
+              <p className="empty-msg">Nenhum projeto nesta visualização.</p>
+            )}
           </div>
 
           <div className="client-documents-block">
             <h3>Documentos do Cliente</h3>
-            {selectedClient.can_edit && (
+            {selectedClient.can_edit ? (
               <form onSubmit={handleCreateClientDocument}>
                 <input
                   value={clientDocumentForm.file_name}
@@ -342,10 +383,12 @@ export default function Clients() {
                 <input
                   value={clientDocumentForm.description}
                   onChange={e => setClientDocumentForm({ ...clientDocumentForm, description: e.target.value })}
-                  placeholder="Descricao"
+                  placeholder="Descrição"
                 />
                 <button type="submit">Adicionar</button>
               </form>
+            ) : (
+              <p className="readonly-note">Você pode visualizar documentos liberados, mas não pode anexar ou alterar links deste cliente.</p>
             )}
 
             <div className="client-documents-list">
@@ -353,7 +396,7 @@ export default function Clients() {
                 <article key={document.id} className={document.archived === 1 ? 'archived' : ''}>
                   <div>
                     <strong>{document.file_name}</strong>
-                    <span>{document.document_type} - {document.provider}{document.archived === 1 ? ' - Arquivado' : ''}</span>
+                    <span>{documentTypeLabels[document.document_type] || 'Outro'} - {documentProviderLabels[document.provider] || 'Outro'}{document.archived === 1 ? ' - Arquivado' : ''}</span>
                   </div>
                   <div>
                     <a href={document.file_url} target="_blank" rel="noreferrer">Abrir</a>
@@ -376,9 +419,10 @@ export default function Clients() {
             <article key={client.id} className={`client-card ${client.archived === 1 ? 'archived' : ''}`}>
               <div className="client-initials">{client.name.substring(0, 2).toUpperCase()}</div>
               <h3>{client.name}</h3>
-              <p>{client.contact_name || 'Sem contato informado'}</p>
-              <span>{client.email || client.phone || 'Sem canal informado'}</span>
+              <p>{client.sensitive_hidden ? 'Contato restrito' : client.contact_name || 'Sem contato informado'}</p>
+              <span>{client.sensitive_hidden ? 'Dados privados' : client.email || client.phone || 'Sem canal informado'}</span>
               <small className="scope-badge">{client.team_id ? `Time: ${client.team_name}` : 'Individual'}</small>
+              {client.sensitive_hidden && <small className="restricted-badge">Dados restritos</small>}
               {client.archived === 1 && <small className="archived-badge">Arquivado</small>}
               <div className="card-actions">
                 <button onClick={() => loadClientProjects(client)}>Projetos</button>

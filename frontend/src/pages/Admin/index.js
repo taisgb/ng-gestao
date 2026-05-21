@@ -52,7 +52,7 @@ export default function Admin() {
       await api.post('/admin/invitations', inviteForm);
       setInviteForm({ email: '', plan: 'convidado' });
       await loadAdminData();
-      setFeedback('Convite registrado. O usuario ja pode se cadastrar com esse email.');
+      setFeedback('Convite registrado. O usuário já pode se cadastrar com esse email.');
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao registrar convite.');
     }
@@ -78,15 +78,15 @@ export default function Admin() {
     <div className="admin-container">
       <header className="page-header">
         <div>
-          <h1>Administracao</h1>
-          <p>Controle convites e categorias dos usuarios da equipe.</p>
+          <h1>Administração</h1>
+          <p>Controle convites e categorias dos usuários da equipe.</p>
         </div>
       </header>
 
       {!isAdmin && (
         <div className="blocked-panel">
           <strong>Acesso restrito</strong>
-          <p>Esta area exige uma conta com categoria admin.</p>
+          <p>Esta área exige uma conta com categoria admin.</p>
         </div>
       )}
 
@@ -114,9 +114,9 @@ export default function Admin() {
           </section>
 
           <section className="admin-panel">
-            <h2>Usuarios</h2>
+            <h2>Usuários</h2>
             {loading ? (
-              <p className="empty-text">Carregando usuarios...</p>
+              <p className="empty-text">Carregando usuários...</p>
             ) : (
               <div className="admin-list">
                 {users.map(item => (

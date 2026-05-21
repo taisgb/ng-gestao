@@ -100,7 +100,7 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canViewOwnFinancialShare(db, req.userId, id)) {
-                return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+                return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             }
 
             const canViewGlobal = await canViewProjectFinancials(db, req.userId, id);
@@ -120,7 +120,7 @@ module.exports = {
             });
         } catch (error) {
             console.error('[ProjectFinancialController.index]', error);
-            return res.status(500).json({ error: 'Erro ao listar lancamentos do projeto.' });
+            return res.status(500).json({ error: 'Erro ao listar lançamentos do projeto.' });
         }
     },
 
@@ -152,26 +152,26 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, req.userId, id);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             if (!await canEditProjectFinancials(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para criar lancamentos financeiros neste projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para criar lançamentos financeiros neste projeto.' });
             }
 
             const normalizedType = financial_type || type;
             if (!TYPES.includes(normalizedType) || !isNonEmptyString(description, 180) || !isNonEmptyString(category, 100) || !isDate(date)) {
-                return res.status(400).json({ error: 'Tipo, descricao, categoria e data validos sao obrigatorios.' });
+                return res.status(400).json({ error: 'Tipo, descrição, categoria e data válidos são obrigatórios.' });
             }
 
             const entryAmount = gross_amount ?? amount;
             if (!isNonNegativeMoney(entryAmount) || toMoney(entryAmount) === 0) {
-                return res.status(400).json({ error: 'Valor positivo e obrigatorio.' });
+                return res.status(400).json({ error: 'Valor positivo e obrigatório.' });
             }
 
-            if (payment_due_date && !isDate(payment_due_date)) return res.status(400).json({ error: 'Data prevista invalida.' });
-            if (paid_at && !isDate(paid_at)) return res.status(400).json({ error: 'Data de pagamento invalida.' });
+            if (payment_due_date && !isDate(payment_due_date)) return res.status(400).json({ error: 'Data prevista inválida.' });
+            if (paid_at && !isDate(paid_at)) return res.status(400).json({ error: 'Data de pagamento inválida.' });
 
             if (status && !STATUSES.includes(status)) {
-                return res.status(400).json({ error: 'Status invalido.' });
+                return res.status(400).json({ error: 'Status inválido.' });
             }
 
             const ownerUserId = user_id || req.userId;
@@ -213,10 +213,10 @@ module.exports = {
             await syncPersonalTransaction(db, entry);
 
             await logActivity(db, req.userId, 'create_financial_entry', 'project', id, { entry_id: result.lastID, type });
-            return res.status(201).json({ id: result.lastID, message: 'Lancamento do projeto criado.' });
+            return res.status(201).json({ id: result.lastID, message: 'Lançamento do projeto criado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.create]', error);
-            return res.status(500).json({ error: 'Erro ao criar lancamento financeiro do projeto.' });
+            return res.status(500).json({ error: 'Erro ao criar lançamento financeiro do projeto.' });
         }
     },
 
@@ -226,11 +226,11 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canEditProjectFinancials(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para editar lancamentos financeiros.' });
+                return res.status(403).json({ error: 'Sem permissão para editar lançamentos financeiros.' });
             }
 
             const entry = await getEntry(db, id, entryId);
-            if (!entry) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (!entry) return res.status(404).json({ error: 'Lançamento não encontrado.' });
 
             const {
                 type,
@@ -256,15 +256,15 @@ module.exports = {
             } = req.body;
 
             const normalizedType = financial_type || type;
-            if (normalizedType !== undefined && !TYPES.includes(normalizedType)) return res.status(400).json({ error: 'Tipo invalido.' });
-            if (status !== undefined && !STATUSES.includes(status)) return res.status(400).json({ error: 'Status invalido.' });
-            if (description !== undefined && !isNonEmptyString(description, 180)) return res.status(400).json({ error: 'Descricao invalida.' });
-            if (category !== undefined && !isNonEmptyString(category, 100)) return res.status(400).json({ error: 'Categoria invalida.' });
-            if (date !== undefined && !isDate(date)) return res.status(400).json({ error: 'Data invalida.' });
+            if (normalizedType !== undefined && !TYPES.includes(normalizedType)) return res.status(400).json({ error: 'Tipo inválido.' });
+            if (status !== undefined && !STATUSES.includes(status)) return res.status(400).json({ error: 'Status inválido.' });
+            if (description !== undefined && !isNonEmptyString(description, 180)) return res.status(400).json({ error: 'Descrição inválida.' });
+            if (category !== undefined && !isNonEmptyString(category, 100)) return res.status(400).json({ error: 'Categoria inválida.' });
+            if (date !== undefined && !isDate(date)) return res.status(400).json({ error: 'Data inválida.' });
             const entryAmount = gross_amount ?? amount;
-            if (entryAmount !== undefined && (!isNonNegativeMoney(entryAmount) || toMoney(entryAmount) === 0)) return res.status(400).json({ error: 'Valor invalido.' });
-            if (payment_due_date !== undefined && payment_due_date && !isDate(payment_due_date)) return res.status(400).json({ error: 'Data prevista invalida.' });
-            if (paid_at !== undefined && paid_at && !isDate(paid_at)) return res.status(400).json({ error: 'Data de pagamento invalida.' });
+            if (entryAmount !== undefined && (!isNonNegativeMoney(entryAmount) || toMoney(entryAmount) === 0)) return res.status(400).json({ error: 'Valor inválido.' });
+            if (payment_due_date !== undefined && payment_due_date && !isDate(payment_due_date)) return res.status(400).json({ error: 'Data prevista inválida.' });
+            if (paid_at !== undefined && paid_at && !isDate(paid_at)) return res.status(400).json({ error: 'Data de pagamento inválida.' });
 
             await db.run(`
                 UPDATE project_financial_entries
@@ -319,10 +319,10 @@ module.exports = {
             await syncPersonalTransaction(db, updated);
 
             await logActivity(db, req.userId, 'update_financial_entry', 'project', id, { entry_id: entryId });
-            return res.json({ message: 'Lancamento atualizado.' });
+            return res.json({ message: 'Lançamento atualizado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.update]', error);
-            return res.status(500).json({ error: 'Erro ao atualizar lancamento financeiro.' });
+            return res.status(500).json({ error: 'Erro ao atualizar lançamento financeiro.' });
         }
     },
 
@@ -332,13 +332,13 @@ module.exports = {
             const { status } = req.body;
             const db = await connectDb();
 
-            if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Status invalido.' });
+            if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Status inválido.' });
             if (!await canEditProjectFinancials(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para alterar status financeiro.' });
+                return res.status(403).json({ error: 'Sem permissão para alterar status financeiro.' });
             }
 
             const entry = await getEntry(db, id, entryId);
-            if (!entry) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (!entry) return res.status(404).json({ error: 'Lançamento não encontrado.' });
 
             await db.run(`
                 UPDATE project_financial_entries
@@ -357,7 +357,7 @@ module.exports = {
             return res.json({ message: 'Status atualizado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.updateStatus]', error);
-            return res.status(500).json({ error: 'Erro ao atualizar status do lancamento.' });
+            return res.status(500).json({ error: 'Erro ao atualizar status do lançamento.' });
         }
     },
 
@@ -367,7 +367,7 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canEditProjectFinancials(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para arquivar lancamentos financeiros.' });
+                return res.status(403).json({ error: 'Sem permissão para arquivar lançamentos financeiros.' });
             }
 
             const result = await db.run(`
@@ -376,12 +376,12 @@ module.exports = {
                 WHERE id = ? AND project_id = ?
             `, [entryId, id]);
 
-            if (result.changes === 0) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (result.changes === 0) return res.status(404).json({ error: 'Lançamento não encontrado.' });
             await logActivity(db, req.userId, 'archive_financial_entry', 'project', id, { entry_id: entryId });
-            return res.json({ message: 'Lancamento arquivado.' });
+            return res.json({ message: 'Lançamento arquivado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.destroy]', error);
-            return res.status(500).json({ error: 'Erro ao arquivar lancamento.' });
+            return res.status(500).json({ error: 'Erro ao arquivar lançamento.' });
         }
     },
 
@@ -391,7 +391,7 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canEditProjectFinancials(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para restaurar lancamentos financeiros.' });
+                return res.status(403).json({ error: 'Sem permissão para restaurar lançamentos financeiros.' });
             }
 
             const result = await db.run(`
@@ -400,12 +400,12 @@ module.exports = {
                 WHERE id = ? AND project_id = ?
             `, [entryId, id]);
 
-            if (result.changes === 0) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (result.changes === 0) return res.status(404).json({ error: 'Lançamento não encontrado.' });
             await logActivity(db, req.userId, 'restore_financial_entry', 'project', id, { entry_id: entryId });
-            return res.json({ message: 'Lancamento restaurado.' });
+            return res.json({ message: 'Lançamento restaurado.' });
         } catch (error) {
             console.error('[ProjectFinancialController.restore]', error);
-            return res.status(500).json({ error: 'Erro ao restaurar lancamento.' });
+            return res.status(500).json({ error: 'Erro ao restaurar lançamento.' });
         }
     },
 
@@ -415,7 +415,7 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canViewProjectFinancials(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para visualizar resumo financeiro global.' });
+                return res.status(403).json({ error: 'Sem permissão para visualizar resumo financeiro global.' });
             }
 
             return res.json(await getSummary(db, id));

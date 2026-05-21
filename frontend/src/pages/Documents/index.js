@@ -148,7 +148,7 @@ export default function Documents() {
   }
 
   async function handleArchive(document) {
-    const confirmed = window.confirm('Deseja arquivar este documento? Ele podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este documento? Ele poderá ser restaurado depois.');
     if (!confirmed) return;
     try {
       await api.patch(`/documents/${document.id}/archive`);
@@ -277,7 +277,7 @@ export default function Documents() {
           <select value={form.document_type} onChange={e => setForm({ ...form, document_type: e.target.value })}>
             {Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descricao" />
+          <input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Descrição" />
           <select value={form.visibility} onChange={e => setForm({ ...form, visibility: e.target.value, team_id: '' })}>
             <option value="individual">Individual</option>
             <option value="team">Time</option>
@@ -300,7 +300,7 @@ export default function Documents() {
             <option value="">Sem nota fiscal</option>
             {invoices.map(invoice => <option key={invoice.id} value={invoice.id}>{invoice.number || `NF ${invoice.id}`} - {invoice.client_name}</option>)}
           </select>
-          <button type="submit">{editing ? 'Salvar alteracoes' : 'Cadastrar'}</button>
+          <button type="submit">{editing ? 'Salvar alterações' : 'Cadastrar'}</button>
           {editing && <button type="button" className="btn-cancel" onClick={resetForm}>Cancelar</button>}
         </form>
       </section>

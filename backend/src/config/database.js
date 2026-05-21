@@ -519,7 +519,7 @@ async function connectDb() {
     }
 
     if (process.env.NODE_ENV === 'production' && !process.env.SQLITE_FILENAME) {
-        throw new Error('DATABASE_URL e obrigatorio em producao. SQLite fica apenas para uso local/backup.');
+        throw new Error('DATABASE_URL é obrigatório em produção. SQLite fica apenas para uso local/backup.');
     }
 
     const filename = process.env.SQLITE_FILENAME
@@ -688,7 +688,7 @@ async function connectDb() {
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
-        -- 11. Divisao financeira compartilhada do projeto
+        -- 11. Divisão financeira compartilhada do projeto
         CREATE TABLE IF NOT EXISTS project_financial_shares (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER NOT NULL,
@@ -700,7 +700,7 @@ async function connectDb() {
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
-        -- 12. Servicos personalizados por usuario
+        -- 12. Serviços personalizados por usuário
         CREATE TABLE IF NOT EXISTS services (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -778,7 +778,7 @@ async function connectDb() {
             FOREIGN KEY (invited_by) REFERENCES users(id)
         );
 
-        -- 16. Lancamentos financeiros do projeto
+        -- 16. Lançamentos financeiros do projeto
         CREATE TABLE IF NOT EXISTS project_financial_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER NOT NULL,
@@ -814,7 +814,7 @@ async function connectDb() {
             FOREIGN KEY (created_by) REFERENCES users(id)
         );
 
-        -- 17. Configuracao fiscal do usuario
+        -- 17. Configuração fiscal do usuário
         CREATE TABLE IF NOT EXISTS user_fiscal_settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE,
@@ -827,7 +827,7 @@ async function connectDb() {
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
-        -- 18. Lancamentos financeiros pessoais privados
+        -- 18. Lançamentos financeiros pessoais privados
         CREATE TABLE IF NOT EXISTS personal_transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,

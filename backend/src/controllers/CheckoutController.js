@@ -2,7 +2,7 @@ module.exports = {
     async create(req, res) {
         try {
             if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_PRO_PRICE_ID || !process.env.FRONTEND_URL) {
-                return res.status(500).json({ error: 'Configuracao do Stripe incompleta.' });
+                return res.status(500).json({ error: 'Configuração do Stripe incompleta.' });
             }
 
             const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);

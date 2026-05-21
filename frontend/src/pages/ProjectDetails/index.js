@@ -49,17 +49,36 @@ const PROJECT_STATUS_META = {
   pendente: { label: 'Pendente', className: 'pending' },
   aprovado: { label: 'Aprovado', className: 'approved' },
   'em andamento': { label: 'Em andamento', className: 'in-progress' },
-  concluido: { label: 'Concluido', className: 'done' },
-  'concluído': { label: 'Concluido', className: 'done' },
+  concluído: { label: 'Concluído', className: 'done' },
   garantia: { label: 'Garantia', className: 'warranty' }
 };
 
 function getProjectStatusMeta(status) {
   const normalized = String(status || 'pendente').toLowerCase().trim();
+  const normalizedKey = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (normalizedKey.startsWith('conclu')) return PROJECT_STATUS_META.concluído;
   return PROJECT_STATUS_META[normalized] || {
     label: status || 'Pendente',
     className: normalized.replace(/\s+/g, '-').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   };
+}
+
+const PROVIDER_LABELS = {
+  drive: 'Drive',
+  external: 'Externo',
+  other: 'Outro'
+};
+
+function getEntryStatusLabel(status) {
+  return ENTRY_STATUSES.find(item => item.value === status)?.label || status || 'Pendente';
+}
+
+function getDocumentTypeLabel(type) {
+  return DOCUMENT_TYPES.find(([value]) => value === type)?.[1] || 'Outro';
+}
+
+function getProviderLabel(provider) {
+  return PROVIDER_LABELS[provider] || 'Outro';
 }
 
 function emptyEntryForm() {
@@ -188,9 +207,9 @@ export default function ProjectDetails() {
       console.error('Erro ao carregar detalhes do projeto', err.response?.data || err);
       setProject(null);
       if (err.response?.status === 403) {
-        setErrorMessage(err.response?.data?.error || 'Sem permissao para acessar este projeto.');
+        setErrorMessage(err.response?.data?.error || 'Sem permissão para acessar este projeto.');
       } else if (err.response?.status === 404) {
-        setErrorMessage(err.response?.data?.error || 'Projeto nao encontrado.');
+        setErrorMessage(err.response?.data?.error || 'Projeto não encontrado.');
       } else {
         setErrorMessage(err.response?.data?.error || 'Erro ao carregar detalhes do projeto.');
       }
@@ -251,9 +270,9 @@ export default function ProjectDetails() {
       const response = await api.post(`/projects/${id}/notes`, { note: newNote });
       setNotes(current => [response.data, ...current]);
       setNewNote('');
-      setFeedback('Anotacao registrada.');
+      setFeedback('Anotação registrada.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao registrar anotacao.');
+      setFeedback(err.response?.data?.error || 'Erro ao registrar anotação.');
     }
   }
 
@@ -275,9 +294,9 @@ export default function ProjectDetails() {
       });
 
       await loadProjectData();
-      setFeedback('Divisao financeira atualizada.');
+      setFeedback('Divisão financeira atualizada.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao salvar divisao financeira.');
+      setFeedback(err.response?.data?.error || 'Erro ao salvar divisão financeira.');
     }
   }
 
@@ -326,7 +345,7 @@ export default function ProjectDetails() {
     }
 
     const selectedMember = members.find(member => String(member.id) === String(newOwnerId));
-    const confirmed = window.confirm(`Deseja repassar este projeto para ${selectedMember?.name || 'este usuario'}?`);
+    const confirmed = window.confirm(`Deseja repassar este projeto para ${selectedMember?.name || 'este usuário'}?`);
     if (!confirmed) return;
 
     try {
@@ -403,14 +422,14 @@ export default function ProjectDetails() {
           document_type: entryForm.document_type || 'receipt',
           project_id: id,
           project_financial_entry_id: editingEntry?.id || entryResponse.data.id,
-          description: `Documento do lancamento: ${entryForm.description}`
+          description: `Documento do lançamento: ${entryForm.description}`
         });
       }
       resetEntryForm();
       await loadProjectData();
-      setFeedback(editingEntry ? 'Lancamento atualizado.' : 'Lancamento do projeto criado.');
+      setFeedback(editingEntry ? 'Lançamento atualizado.' : 'Lançamento do projeto criado.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao salvar lancamento do projeto.');
+      setFeedback(err.response?.data?.error || 'Erro ao salvar lançamento do projeto.');
     }
   }
 
@@ -418,7 +437,7 @@ export default function ProjectDetails() {
     try {
       await api.patch(`/projects/${id}/financial-entries/${entry.id}/status`, { status });
       await loadProjectData();
-      setFeedback('Status do lancamento atualizado.');
+      setFeedback('Status do lançamento atualizado.');
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Erro ao atualizar status.');
     }
@@ -428,9 +447,9 @@ export default function ProjectDetails() {
     try {
       await api.delete(`/projects/${id}/financial-entries/${entry.id}`);
       await loadProjectData();
-      setFeedback('Lancamento arquivado.');
+      setFeedback('Lançamento arquivado.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao arquivar lancamento.');
+      setFeedback(err.response?.data?.error || 'Erro ao arquivar lançamento.');
     }
   }
 
@@ -438,9 +457,9 @@ export default function ProjectDetails() {
     try {
       await api.patch(`/projects/${id}/financial-entries/${entry.id}/restore`);
       await loadProjectData();
-      setFeedback('Lancamento restaurado.');
+      setFeedback('Lançamento restaurado.');
     } catch (err) {
-      setFeedback(err.response?.data?.error || 'Erro ao restaurar lancamento.');
+      setFeedback(err.response?.data?.error || 'Erro ao restaurar lançamento.');
     }
   }
 
@@ -468,7 +487,7 @@ export default function ProjectDetails() {
   }
 
   async function handleArchiveDocument(document) {
-    const confirmed = window.confirm('Deseja arquivar este documento? Ele podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este documento? Ele poderá ser restaurado depois.');
     if (!confirmed) return;
 
     try {
@@ -497,14 +516,14 @@ export default function ProjectDetails() {
 
     setTasks(current => current.map(item => (
       item.id === task.id
-        ? { ...item, status: done ? 'pendente' : 'concluido' }
+        ? { ...item, status: done ? 'pendente' : 'concluído' }
         : item
     )));
 
     try {
       await api.patch(`/tasks/${task.id}/status`, { status: nextStatus });
       await loadProjectData();
-      setFeedback(done ? 'Tarefa reaberta.' : 'Tarefa concluida.');
+      setFeedback(done ? 'Tarefa reaberta.' : 'Tarefa concluída.');
     } catch (err) {
       setTasks(previousTasks);
       setFeedback(err.response?.data?.error || 'Erro ao atualizar tarefa.');
@@ -525,7 +544,7 @@ export default function ProjectDetails() {
   }
 
   if (loading) return <div className="loading">Carregando detalhes...</div>;
-  if (!project) return <div className="error">{errorMessage || 'Projeto nao encontrado.'}</div>;
+  if (!project) return <div className="error">{errorMessage || 'Projeto não encontrado.'}</div>;
 
   const totalIncome = transactions
     .filter(t => t.type === 'Receita')
@@ -540,12 +559,14 @@ export default function ProjectDetails() {
   const canTransferOwner = project.access_role === 'owner';
   const canEditProject = ['owner', 'admin', 'gestor'].includes(project.access_role);
   const canManageProjectMembers = ['owner', 'admin', 'gestor'].includes(project.access_role);
+  const canViewProjectFinancials = Boolean(project.can_view_financials);
+  const canEditAnyFinanceShare = Boolean(finance?.can_edit_total || finance?.shares?.some(share => share.can_edit));
   const projectStatusMeta = getProjectStatusMeta(project.status);
   const transferCandidates = members.filter(member => member.role !== 'owner');
   const financeKpis = [
     ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
     ['Receitas adicionais', projectFinanceSummary?.additional_income],
-    ['Custos reembolsaveis cobrados', projectFinanceSummary?.billable_reimbursable_costs],
+    ['Custos reembolsáveis cobrados', projectFinanceSummary?.billable_reimbursable_costs],
     ['Valor atualizado', projectFinanceSummary?.updated_value ?? projectFinanceSummary?.updated_total_value],
     ['Recebido do cliente', projectFinanceSummary?.received_client ?? projectFinanceSummary?.received ?? projectFinanceSummary?.total_received],
     ['Pendente do cliente', projectFinanceSummary?.pending_client ?? projectFinanceSummary?.pending ?? projectFinanceSummary?.total_pending],
@@ -553,7 +574,7 @@ export default function ProjectDetails() {
     ['Repasses', projectFinanceSummary?.transfers_total],
     ['Pendente de repasse', projectFinanceSummary?.pending_transfer],
     ['A reembolsar', projectFinanceSummary?.reimbursable_expenses],
-    ['Saldo liquido previsto', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance],
+    ['Saldo líquido previsto', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance],
     ['Caixa atual', projectFinanceSummary?.cash_current ?? projectFinanceSummary?.current_cash],
     ['Minha parte', projectFinanceSummary?.own_amount ?? projectFinanceSummary?.my_share]
   ];
@@ -612,7 +633,7 @@ export default function ProjectDetails() {
               <input value={projectForm.title} onChange={e => setProjectForm({ ...projectForm, title: e.target.value })} required />
             </label>
             <label>
-              Descricao
+              Descrição
               <textarea value={projectForm.description} onChange={e => setProjectForm({ ...projectForm, description: e.target.value })} rows="3" />
             </label>
             <label>
@@ -675,7 +696,7 @@ export default function ProjectDetails() {
 
             <div className="drawer-actions">
               <button type="button" className="btn-cancel" onClick={() => setIsProjectEditOpen(false)}>Cancelar</button>
-              <button type="submit">Salvar alteracoes</button>
+              <button type="submit">Salvar alterações</button>
             </div>
           </form>
         </div>
@@ -684,7 +705,7 @@ export default function ProjectDetails() {
       <section className="project-summary">
         <div className="summary-item">
           <span>Valor do Contrato</span>
-          <strong>{formatCurrency(finance?.total_value ?? project.base_value)}</strong>
+          <strong>{canViewProjectFinancials ? formatCurrency(finance?.total_value ?? project.base_value) : 'Restrito'}</strong>
         </div>
         <div className="summary-item">
           <span>Meu Recebido</span>
@@ -692,11 +713,11 @@ export default function ProjectDetails() {
         </div>
         <div className="summary-item">
           <span>Prazo</span>
-          <strong>{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Flexivel'}</strong>
+          <strong>{project.deadline ? new Date(project.deadline).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Flexível'}</strong>
         </div>
         <div className="summary-item">
           <span>Garantia</span>
-          <strong>{project.warranty_end_date ? `Ate ${new Date(project.warranty_end_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : 'Sem garantia'}</strong>
+          <strong>{project.warranty_end_date ? `Até ${new Date(project.warranty_end_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : 'Sem garantia'}</strong>
         </div>
       </section>
 
@@ -704,25 +725,35 @@ export default function ProjectDetails() {
         <section className="finance-split-section">
           <div className="split-header">
             <div>
-              <h2>Divisao financeira</h2>
-              <p>{formatCurrency(finance.allocation_total)} distribuido de {formatCurrency(finance.total_value)}</p>
+              <h2>{finance.can_view_global ? 'Divisão financeira' : 'Minha parte financeira'}</h2>
+              <p>
+                {finance.can_view_global
+                  ? `${formatCurrency(finance.allocation_total)} distribuído de ${formatCurrency(finance.total_value)}`
+                  : 'Você visualiza apenas a sua própria participação financeira neste projeto.'}
+              </p>
             </div>
-            <span className={finance.unallocated_amount === 0 ? 'balanced' : 'pending'}>
-              {finance.unallocated_amount === 0 ? 'Fechado' : `${formatCurrency(finance.unallocated_amount)} sem dividir`}
-            </span>
+            {finance.can_view_global ? (
+              <span className={finance.unallocated_amount === 0 ? 'balanced' : 'pending'}>
+                {finance.unallocated_amount === 0 ? 'Fechado' : `${formatCurrency(finance.unallocated_amount)} sem dividir`}
+              </span>
+            ) : (
+              <span className="restricted">Visão restrita</span>
+            )}
           </div>
 
           <form onSubmit={handleSaveFinance} className="split-form">
-            <div className="total-field">
-              <label>Valor total do projeto</label>
-              <input
-                type="number"
-                step="0.01"
-                value={totalValueDraft}
-                disabled={!finance.can_edit_total}
-                onChange={e => setTotalValueDraft(e.target.value)}
-              />
-            </div>
+            {finance.can_view_global && (
+              <div className="total-field">
+                <label>Valor total do projeto</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={totalValueDraft}
+                  disabled={!finance.can_edit_total}
+                  onChange={e => setTotalValueDraft(e.target.value)}
+                />
+              </div>
+            )}
 
             <div className="share-list">
               {finance.shares.map(share => (
@@ -745,7 +776,7 @@ export default function ProjectDetails() {
               ))}
             </div>
 
-            <button type="submit">Salvar divisao</button>
+            {canEditAnyFinanceShare && <button type="submit">Salvar divisão</button>}
           </form>
         </section>
       )}
@@ -754,11 +785,11 @@ export default function ProjectDetails() {
         <div className="split-header">
           <div>
             <h2>Receitas e Despesas do Projeto</h2>
-            {!project.can_view_financials && <p>Voce visualiza apenas sua propria parte financeira neste projeto.</p>}
+            {!project.can_view_financials && <p>Você visualiza apenas sua própria parte financeira neste projeto.</p>}
           </div>
         </div>
 
-        {projectFinanceSummary && (
+        {canViewProjectFinancials && projectFinanceSummary && (
           <div className="entry-summary-grid">
             {financeKpis.map(([label, value]) => (
               <div key={label}>
@@ -769,13 +800,17 @@ export default function ProjectDetails() {
           </div>
         )}
 
+        {!canViewProjectFinancials && (
+          <p className="readonly-note">Lançamentos globais e KPIs financeiros ficam ocultos para o seu papel.</p>
+        )}
+
         {canEditProjectEntries && (
           <form onSubmit={handleSaveEntry} className={`entry-form ${editingEntry ? 'editing' : ''}`}>
-            {editingEntry && <div className="editing-banner">Editando lancamento #{editingEntry.id}</div>}
+            {editingEntry && <div className="editing-banner">Editando lançamento #{editingEntry.id}</div>}
             <select value={entryForm.type} onChange={e => setEntryForm({ ...entryForm, type: e.target.value })}>
               {ENTRY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
             </select>
-            <input value={entryForm.description} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} placeholder="Descricao" required />
+            <input value={entryForm.description} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} placeholder="Descrição" required />
             <input value={entryForm.category} onChange={e => setEntryForm({ ...entryForm, category: e.target.value })} placeholder="Categoria" required />
             <input type="number" step="0.01" value={entryForm.gross_amount || entryForm.amount} onChange={e => setEntryForm({ ...entryForm, gross_amount: e.target.value, amount: e.target.value })} placeholder="Valor bruto" required />
             <input type="number" step="0.01" value={entryForm.own_amount} onChange={e => setEntryForm({ ...entryForm, own_amount: e.target.value })} placeholder="Minha parte" />
@@ -788,11 +823,11 @@ export default function ProjectDetails() {
             </select>
             <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
             <label><input type="checkbox" checked={entryForm.affects_project_total} onChange={e => setEntryForm({ ...entryForm, affects_project_total: e.target.checked })} /> Soma no projeto</label>
-            <label><input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked, billable_to_client: e.target.checked ? true : entryForm.billable_to_client, affects_project_total: e.target.checked ? true : entryForm.affects_project_total })} /> Reembolsavel</label>
+            <label><input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked, billable_to_client: e.target.checked ? true : entryForm.billable_to_client, affects_project_total: e.target.checked ? true : entryForm.affects_project_total })} /> Reembolsável</label>
             <label><input type="checkbox" checked={entryForm.billable_to_client} onChange={e => setEntryForm({ ...entryForm, billable_to_client: e.target.checked })} /> Cobrar do cliente</label>
             <label><input type="checkbox" checked={entryForm.affects_my_financial} onChange={e => setEntryForm({ ...entryForm, affects_my_financial: e.target.checked })} /> Meu financeiro</label>
-            <p className="entry-help">Custos reembolsaveis podem ser cobrados do cliente e somam ao valor atualizado quando "Soma no projeto" estiver marcado.</p>
-            <textarea value={entryForm.notes} onChange={e => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="Observacoes" />
+            <p className="entry-help">Custos reembolsáveis podem ser cobrados do cliente e somam ao valor atualizado quando "Soma no projeto" estiver marcado.</p>
+            <textarea value={entryForm.notes} onChange={e => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="Observações" />
             <input value={entryForm.document_file_name} onChange={e => setEntryForm({ ...entryForm, document_file_name: e.target.value })} placeholder="Nome do comprovante" />
             <input value={entryForm.document_file_url} onChange={e => setEntryForm({ ...entryForm, document_file_url: e.target.value })} placeholder="Link do comprovante" />
             <select value={entryForm.document_type} onChange={e => setEntryForm({ ...entryForm, document_type: e.target.value })}>
@@ -801,11 +836,12 @@ export default function ProjectDetails() {
               <option value="boleto">Boleto</option>
               <option value="other">Outro</option>
             </select>
-            <button type="submit">{editingEntry ? 'Salvar alteracoes' : 'Adicionar lancamento'}</button>
-            {editingEntry && <button type="button" className="btn-cancel" onClick={resetEntryForm}>Cancelar edicao</button>}
+            <button type="submit">{editingEntry ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
+            {editingEntry && <button type="button" className="btn-cancel" onClick={resetEntryForm}>Cancelar edição</button>}
           </form>
         )}
 
+        {canViewProjectFinancials && (
         <div className="entry-tabs">
           {ENTRY_TAB_CONFIG.map(([value, label]) => (
             <button
@@ -818,14 +854,16 @@ export default function ProjectDetails() {
             </button>
           ))}
         </div>
+        )}
 
+        {canViewProjectFinancials && (
         <div className="entries-table">
           <div className="entries-header">
             <span>Tipo</span>
             <span>Categoria</span>
-            <span>Descricao</span>
+            <span>Descrição</span>
             <span>Status</span>
-            <span>Responsavel</span>
+            <span>Responsável</span>
             <span>Valor</span>
             <span>Data</span>
             <span>Acoes</span>
@@ -835,8 +873,8 @@ export default function ProjectDetails() {
               <span className={`type-pill ${entry.type}`}>{ENTRY_TYPES.find(type => type.value === entry.type)?.label || entry.type}</span>
               <span>{entry.category}</span>
               <strong>{entry.description}</strong>
-              <span className={`status-pill ${entry.status}`}>{entry.status}</span>
-              <span>{entry.created_by_name || 'Voce'}</span>
+              <span className={`status-pill ${entry.status}`}>{getEntryStatusLabel(entry.status)}</span>
+              <span>{entry.created_by_name || 'Você'}</span>
               <strong>{formatCurrency(entry.gross_amount ?? entry.amount)}</strong>
               <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
               {canEditProjectEntries ? (
@@ -877,8 +915,9 @@ export default function ProjectDetails() {
               ) : <span>-</span>}
             </article>
           ))}
-          {visibleProjectEntries.length === 0 && <p className="empty">Nenhum lancamento nesta visualizacao.</p>}
+          {visibleProjectEntries.length === 0 && <p className="empty">Nenhum lançamento nesta visualização.</p>}
         </div>
+        )}
       </section>
 
       <section className="project-documents-section">
@@ -889,7 +928,7 @@ export default function ProjectDetails() {
           </div>
         </div>
 
-        {canEditProjectEntries && (
+        {canEditProject && (
           <form onSubmit={handleCreateDocument} className="document-inline-form">
             <input
               value={documentForm.file_name}
@@ -914,7 +953,7 @@ export default function ProjectDetails() {
             <input
               value={documentForm.description}
               onChange={e => setDocumentForm({ ...documentForm, description: e.target.value })}
-              placeholder="Descricao opcional"
+              placeholder="Descrição opcional"
             />
             <button type="submit">Adicionar documento</button>
           </form>
@@ -925,7 +964,7 @@ export default function ProjectDetails() {
             <article key={document.id} className={document.archived === 1 ? 'archived' : ''}>
               <div>
                 <strong>{document.file_name}</strong>
-                <span>{document.document_type} - {document.provider}{document.archived === 1 ? ' - Arquivado' : ''}</span>
+                <span>{getDocumentTypeLabel(document.document_type)} - {getProviderLabel(document.provider)}{document.archived === 1 ? ' - Arquivado' : ''}</span>
               </div>
               <div>
                 <a href={document.file_url} target="_blank" rel="noreferrer">Abrir</a>
@@ -941,45 +980,55 @@ export default function ProjectDetails() {
       <section className="collaboration-panel">
         <div className="panel-section">
           <h2>Status do projeto</h2>
-          <div className="status-options">
-            {statuses.map(status => (
-              (() => {
-                const meta = getProjectStatusMeta(status.name);
-                return (
-              <button
-                key={status.id}
-                type="button"
-                className={`${project.status === status.name ? 'active' : ''} ${meta.className}`}
-                onClick={() => handleStatusChange(status.name)}
-              >
-                {meta.label}
-              </button>
-                );
-              })()
-            ))}
-          </div>
+          {canEditProject ? (
+            <>
+              <div className="status-options">
+                {statuses.map(status => (
+                  (() => {
+                    const meta = getProjectStatusMeta(status.name);
+                    return (
+                  <button
+                    key={status.id}
+                    type="button"
+                    className={`${project.status === status.name ? 'active' : ''} ${meta.className}`}
+                    onClick={() => handleStatusChange(status.name)}
+                  >
+                    {meta.label}
+                  </button>
+                    );
+                  })()
+                ))}
+              </div>
 
-          <form onSubmit={handleAddStatus} className="inline-form">
-            <input
-              value={newStatus}
-              onChange={e => setNewStatus(e.target.value)}
-              placeholder="Novo status"
-            />
-            <button type="submit">Adicionar</button>
-          </form>
+              <form onSubmit={handleAddStatus} className="inline-form">
+                <input
+                  value={newStatus}
+                  onChange={e => setNewStatus(e.target.value)}
+                  placeholder="Novo status"
+                />
+                <button type="submit">Adicionar</button>
+              </form>
+            </>
+          ) : (
+            <p className="readonly-note">Você pode acompanhar o status, mas não pode alterar o fluxo deste projeto.</p>
+          )}
         </div>
 
         <div className="panel-section">
           <h2>Compartilhamento</h2>
-          <form onSubmit={handleInvite} className="inline-form">
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              placeholder="email@exemplo.com"
-            />
-            <button type="submit">Convidar</button>
-          </form>
+          {canManageProjectMembers ? (
+            <form onSubmit={handleInvite} className="inline-form">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                placeholder="email@exemplo.com"
+              />
+              <button type="submit">Convidar</button>
+            </form>
+          ) : (
+            <p className="readonly-note">Você pode ver os participantes do projeto, mas não pode gerenciar acessos.</p>
+          )}
 
           {canTransferOwner && transferCandidates.length > 0 && (
             <form onSubmit={handleTransferOwner} className="inline-form transfer-owner-form">
@@ -1000,7 +1049,7 @@ export default function ProjectDetails() {
               <div key={`${member.role}-${member.id}`} className="member-item">
                 <div>
                   <strong>{member.name}</strong>
-                  <span>{member.email}</span>
+                  {canManageProjectMembers && <span>{member.email}</span>}
                 </div>
                 <div className="member-actions">
                   <span className={`role-badge ${member.role}`}>{member.role === 'owner' ? 'Dono' : 'Colaborador'}</span>
@@ -1031,9 +1080,9 @@ export default function ProjectDetails() {
                 <div>
                   <span className={String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done' ? 'done' : ''}>{task.title}</span>
                   <small>
-                    {task.assigned_name || 'Sem responsavel'}
+                    {task.assigned_name || 'Sem responsável'}
                     {task.due_date ? ` - ${new Date(task.due_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}
-                    {(String(task.status || '').toLowerCase().startsWith('conclu') || task.status === 'done') ? ' - Concluida' : ''}
+                    {(String(task.status || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').startsWith('conclu') || task.status === 'done') ? ' - Concluída' : ''}
                   </small>
                 </div>
               </div>
@@ -1054,7 +1103,7 @@ export default function ProjectDetails() {
                 <strong>{t.type === 'Despesa' ? '-' : '+'} {formatCurrency(t.amount)}</strong>
               </div>
             ))}
-            {transactions.length === 0 && <p className="empty">Sem lancamentos individuais.</p>}
+            {transactions.length === 0 && <p className="empty">Sem lançamentos individuais.</p>}
           </div>
         </section>
       </div>
@@ -1065,10 +1114,10 @@ export default function ProjectDetails() {
           <textarea
             value={newNote}
             onChange={e => setNewNote(e.target.value)}
-            placeholder="Registre uma decisao, pendencia ou atualizacao importante..."
+            placeholder="Registre uma decisão, pendência ou atualização importante..."
             rows="4"
           />
-          <button type="submit">Registrar anotacao</button>
+          <button type="submit">Registrar anotação</button>
         </form>
 
         <div className="notes-list">
@@ -1080,7 +1129,7 @@ export default function ProjectDetails() {
               </span>
             </article>
           ))}
-          {notes.length === 0 && <p className="empty">Nenhuma anotacao ainda.</p>}
+          {notes.length === 0 && <p className="empty">Nenhuma anotação ainda.</p>}
         </div>
       </section>
     </div>

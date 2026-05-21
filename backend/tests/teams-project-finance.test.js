@@ -1928,6 +1928,170 @@ test('project invoices respect financial project roles and block regular members
     }
 });
 
+test('project document feed is strictly scoped to the current project', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        const projectB = await db.run(
+            "INSERT INTO projects (user_id, client_id, team_id, scope, title, base_value, archived) VALUES (?, ?, ?, 'team', 'Projeto B', 3000, 0)",
+            [seeded.ownerId, seeded.clientId, seeded.teamId]
+        );
+        const projectBId = projectB.lastID;
+
+        const projectADoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                file_name: 'Contrato Projeto A',
+                file_url: 'https://example.com/projeto-a.pdf',
+                provider: 'external',
+                document_type: 'contract'
+            }
+        });
+        assert.equal(projectADoc.statusCode, 201);
+
+        const projectBDoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: projectBId,
+                file_name: 'Contrato Projeto B',
+                file_url: 'https://example.com/projeto-b.pdf',
+                provider: 'external',
+                document_type: 'contract'
+            }
+        });
+        assert.equal(projectBDoc.statusCode, 201);
+
+        const globalTeamDoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                team_id: seeded.teamId,
+                file_name: 'Pasta global do time',
+                file_url: 'https://example.com/time.pdf',
+                provider: 'external',
+                document_type: 'folder'
+            }
+        });
+        assert.equal(globalTeamDoc.statusCode, 201);
+
+        const privateOutsideDoc = await callController(DocumentController.create, {
+            userId: seeded.outsideId,
+            body: {
+                file_name: 'Documento privado externo',
+                file_url: 'https://example.com/privado.pdf',
+                provider: 'external',
+                document_type: 'other'
+            }
+        });
+        assert.equal(privateOutsideDoc.statusCode, 201);
+
+        const archivedProjectADoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                file_name: 'Briefing arquivado A',
+                file_url: 'https://example.com/a-arquivado.pdf',
+                provider: 'external',
+                document_type: 'briefing'
+            }
+        });
+        assert.equal(archivedProjectADoc.statusCode, 201);
+        await callController(DocumentController.archive, {
+            userId: seeded.ownerId,
+            params: { id: archivedProjectADoc.body.id }
+        });
+
+        const invoiceA = await callController(InvoiceController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: seeded.projectId,
+                client_name: 'Cliente Compartilhado',
+                amount: 1000,
+                issue_date: '2026-05-20',
+                status: 'emitida'
+            }
+        });
+        assert.equal(invoiceA.statusCode, 201);
+
+        const invoiceB = await callController(InvoiceController.create, {
+            userId: seeded.ownerId,
+            body: {
+                project_id: projectBId,
+                client_name: 'Cliente Compartilhado',
+                amount: 2000,
+                issue_date: '2026-05-21',
+                status: 'emitida'
+            }
+        });
+        assert.equal(invoiceB.statusCode, 201);
+
+        const invoiceADoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                invoice_id: invoiceA.body.id,
+                file_name: 'PDF NF Projeto A',
+                file_url: 'https://example.com/nf-a.pdf',
+                provider: 'external',
+                document_type: 'invoice'
+            }
+        });
+        assert.equal(invoiceADoc.statusCode, 201);
+
+        const invoiceBDoc = await callController(DocumentController.create, {
+            userId: seeded.ownerId,
+            body: {
+                invoice_id: invoiceB.body.id,
+                file_name: 'PDF NF Projeto B',
+                file_url: 'https://example.com/nf-b.pdf',
+                provider: 'external',
+                document_type: 'invoice'
+            }
+        });
+        assert.equal(invoiceBDoc.statusCode, 201);
+
+        const legacyInvoiceADoc = await db.run(`
+            INSERT INTO documents (user_id, team_id, invoice_id, file_name, file_url, provider, document_type, archived)
+            VALUES (?, ?, ?, 'PDF legado NF A', 'https://example.com/nf-a-legado.pdf', 'external', 'invoice', 0)
+        `, [seeded.ownerId, seeded.teamId, invoiceA.body.id]);
+
+        const legacyInvoiceBDoc = await db.run(`
+            INSERT INTO documents (user_id, team_id, invoice_id, file_name, file_url, provider, document_type, archived)
+            VALUES (?, ?, ?, 'PDF legado NF B', 'https://example.com/nf-b-legado.pdf', 'external', 'invoice', 0)
+        `, [seeded.ownerId, seeded.teamId, invoiceB.body.id]);
+
+        for (const userId of [seeded.ownerId, seeded.adminId, seeded.gestorId]) {
+            const projectADocs = await callController(DocumentController.byProject, {
+                userId,
+                params: { id: seeded.projectId },
+                query: {}
+            });
+
+            assert.equal(projectADocs.statusCode, 200);
+            const ids = projectADocs.body.map(document => document.id);
+            assert.equal(ids.includes(projectADoc.body.id), true);
+            assert.equal(ids.includes(invoiceADoc.body.id), true);
+            assert.equal(ids.includes(legacyInvoiceADoc.lastID), true);
+            assert.equal(ids.includes(projectBDoc.body.id), false);
+            assert.equal(ids.includes(invoiceBDoc.body.id), false);
+            assert.equal(ids.includes(legacyInvoiceBDoc.lastID), false);
+            assert.equal(ids.includes(globalTeamDoc.body.id), false);
+            assert.equal(ids.includes(privateOutsideDoc.body.id), false);
+            assert.equal(ids.includes(archivedProjectADoc.body.id), false);
+        }
+
+        const archivedProjectADocs = await callController(DocumentController.byProject, {
+            userId: seeded.adminId,
+            params: { id: seeded.projectId },
+            query: { status: 'archived' }
+        });
+        assert.equal(archivedProjectADocs.statusCode, 200);
+        assert.equal(archivedProjectADocs.body.some(document => document.id === archivedProjectADoc.body.id), true);
+        assert.equal(archivedProjectADocs.body.some(document => document.id === projectBDoc.body.id), false);
+    } finally {
+        await cleanup();
+    }
+});
+
 test('financeiro role sees only explicitly authorized project financials', async () => {
     const { db, cleanup } = await openTestDb();
     try {
@@ -2051,6 +2215,40 @@ test('super admin bootstrap creates account, refreshes password and login token 
         if (previousAppSecret === undefined) delete process.env.APP_SECRET;
         else process.env.APP_SECRET = previousAppSecret;
 
+        await cleanup();
+    }
+});
+
+test('personal summary returns zero fallback for user without transactions', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedUsers(db);
+
+        const summary = await callController(PersonalTransactionController.summary, {
+            userId: seeded.ownerId,
+            query: { month: '05', year: '2026' }
+        });
+
+        assert.equal(summary.statusCode, 200);
+        assert.equal(summary.body.bank_balance, 0);
+        assert.equal(summary.body.gross_revenue_total, 0);
+        assert.equal(summary.body.expected_month, 0);
+        assert.equal(summary.body.received, 0);
+        assert.equal(summary.body.personal_expenses, 0);
+        assert.equal(summary.body.work_expenses, 0);
+        assert.equal(summary.body.transfers, 0);
+        assert.equal(summary.body.own_amount, 0);
+        assert.equal(summary.body.projected_balance, 0);
+        assert.equal(summary.body.personal_projected_balance, 0);
+        assert.equal(summary.body.recurring_expenses, 0);
+        assert.equal(summary.body.total_debt, 0);
+        assert.equal(summary.body.current_card_bill, 0);
+        assert.equal(summary.body.fixed_installments, 0);
+        assert.equal(summary.body.saldo_bancos, 0);
+        assert.equal(summary.body.faturamento_total, 0);
+        assert.equal(summary.body.previsto_mes, 0);
+        assert.equal(summary.body.saldo_previsto, 0);
+    } finally {
         await cleanup();
     }
 });

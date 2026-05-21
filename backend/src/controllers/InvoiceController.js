@@ -1,5 +1,6 @@
 const connectDb = require('../config/database');
 const { isDate, isNonEmptyString, isNonNegativeMoney, toMoney } = require('../utils/validators');
+const { monthYearFilter, yearFilter } = require('../utils/dateSql');
 const {
     canEditInvoice,
     canEditProjectFinancials,
@@ -29,11 +30,11 @@ module.exports = {
             const { project_id, number, client_name, description, amount, issue_date, status } = req.body;
 
             if (!isNonEmptyString(client_name, 160) || !isDate(issue_date) || !isNonNegativeMoney(amount)) {
-                return res.status(400).json({ error: 'Cliente, data de emissao e valor valido sao obrigatorios.' });
+                return res.status(400).json({ error: 'Cliente, data de emissão e valor válido são obrigatórios.' });
             }
 
             if (status && !ALLOWED_STATUSES.includes(status)) {
-                return res.status(400).json({ error: 'Status de nota fiscal invalido.' });
+                return res.status(400).json({ error: 'Status de nota fiscal inválido.' });
             }
 
             const db = await connectDb();
@@ -41,7 +42,7 @@ module.exports = {
             if (project_id) {
                 const canEditProject = await canEditProjectFinancials(db, req.userId, project_id);
                 if (!canEditProject) {
-                    return res.status(403).json({ error: 'Sem permissao financeira para registrar NF neste projeto.' });
+                    return res.status(403).json({ error: 'Sem permissão financeira para registrar NF neste projeto.' });
                 }
             }
 
@@ -103,7 +104,7 @@ module.exports = {
             }
 
             if (month && year) {
-                query += " AND strftime('%m', i.issue_date) = ? AND strftime('%Y', i.issue_date) = ?";
+                query += ` AND ${monthYearFilter(db, 'i.issue_date')}`;
                 params.push(month.padStart(2, '0'), year);
             }
 
@@ -144,7 +145,7 @@ module.exports = {
             return res.json(settings);
         } catch (error) {
             console.error('[InvoiceController.fiscalSettings]', error);
-            return res.status(500).json({ error: 'Erro ao carregar configuracao fiscal.' });
+            return res.status(500).json({ error: 'Erro ao carregar configuração fiscal.' });
         }
     },
 
@@ -153,11 +154,11 @@ module.exports = {
             const { company_type, opening_date, use_proportional_limit } = req.body;
 
             if (!['mei', 'me'].includes(company_type)) {
-                return res.status(400).json({ error: 'Enquadramento fiscal invalido.' });
+                return res.status(400).json({ error: 'Enquadramento fiscal inválido.' });
             }
 
             if (opening_date && !isDate(opening_date)) {
-                return res.status(400).json({ error: 'Data de abertura invalida.' });
+                return res.status(400).json({ error: 'Data de abertura inválida.' });
             }
 
             const annualLimit = COMPANY_LIMITS[company_type];
@@ -180,7 +181,7 @@ module.exports = {
             return res.json(settings);
         } catch (error) {
             console.error('[InvoiceController.updateFiscalSettings]', error);
-            return res.status(500).json({ error: 'Erro ao salvar configuracao fiscal.' });
+            return res.status(500).json({ error: 'Erro ao salvar configuração fiscal.' });
         }
     },
 
@@ -188,7 +189,7 @@ module.exports = {
         try {
             const year = String(req.query.year || new Date().getFullYear());
             if (!/^\d{4}$/.test(year)) {
-                return res.status(400).json({ error: 'Ano fiscal invalido.' });
+                return res.status(400).json({ error: 'Ano fiscal inválido.' });
             }
 
             const db = await connectDb();
@@ -204,7 +205,7 @@ module.exports = {
             const rows = await db.all(`
                 SELECT status, amount
                 FROM invoices
-                WHERE user_id = ? AND strftime('%Y', issue_date) = ?
+                WHERE user_id = ? AND ${yearFilter(db, 'issue_date')}
             `, [req.userId, year]);
 
             const totalFiltered = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
@@ -247,35 +248,35 @@ module.exports = {
             const { number, client_name, description, amount, issue_date, status, project_id } = req.body;
 
             if (client_name !== undefined && !isNonEmptyString(client_name, 160)) {
-                return res.status(400).json({ error: 'Cliente invalido.' });
+                return res.status(400).json({ error: 'Cliente inválido.' });
             }
 
             if (issue_date !== undefined && !isDate(issue_date)) {
-                return res.status(400).json({ error: 'Data de emissao invalida.' });
+                return res.status(400).json({ error: 'Data de emissão inválida.' });
             }
 
             if (amount !== undefined && !isNonNegativeMoney(amount)) {
-                return res.status(400).json({ error: 'Valor invalido.' });
+                return res.status(400).json({ error: 'Valor inválido.' });
             }
 
             if (status !== undefined && !ALLOWED_STATUSES.includes(status)) {
-                return res.status(400).json({ error: 'Status de nota fiscal invalido.' });
+                return res.status(400).json({ error: 'Status de nota fiscal inválido.' });
             }
 
             const db = await connectDb();
             const invoice = await getInvoice(db, id);
 
             if (!invoice) {
-                return res.status(404).json({ error: 'Nota fiscal nao encontrada.' });
+                return res.status(404).json({ error: 'Nota fiscal não encontrada.' });
             }
 
             if (!await canEditInvoice(db, req.userId, invoice)) {
-                return res.status(403).json({ error: 'Sem permissao para editar esta nota fiscal.' });
+                return res.status(403).json({ error: 'Sem permissão para editar esta nota fiscal.' });
             }
 
             if (project_id) {
                 const canEditProject = await canEditProjectFinancials(db, req.userId, project_id);
-                if (!canEditProject) return res.status(403).json({ error: 'Sem permissao financeira para vincular esta NF ao projeto.' });
+                if (!canEditProject) return res.status(403).json({ error: 'Sem permissão financeira para vincular esta NF ao projeto.' });
             }
 
             const result = await db.run(`
@@ -300,7 +301,7 @@ module.exports = {
             ]);
 
             if (result.changes === 0) {
-                return res.status(404).json({ error: 'Nota fiscal nao encontrada.' });
+                return res.status(404).json({ error: 'Nota fiscal não encontrada.' });
             }
 
             return res.json({ message: 'Nota fiscal atualizada.' });
@@ -317,11 +318,11 @@ module.exports = {
             const invoice = await getInvoice(db, id);
 
             if (!invoice) {
-                return res.status(404).json({ error: 'Nota fiscal nao encontrada.' });
+                return res.status(404).json({ error: 'Nota fiscal não encontrada.' });
             }
 
             if (!await canEditInvoice(db, req.userId, invoice)) {
-                return res.status(403).json({ error: 'Sem permissao para remover esta nota fiscal.' });
+                return res.status(403).json({ error: 'Sem permissão para remover esta nota fiscal.' });
             }
 
             await db.run('DELETE FROM invoices WHERE id = ?', [id]);

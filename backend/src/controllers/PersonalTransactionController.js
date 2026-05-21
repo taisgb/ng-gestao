@@ -1,5 +1,6 @@
 const connectDb = require('../config/database');
 const { isDate, isNonEmptyString, isNonNegativeMoney, toMoney } = require('../utils/validators');
+const { monthYearFilter } = require('../utils/dateSql');
 
 const TYPES = ['income', 'expense'];
 const STATUSES = ['expected', 'paid', 'overdue', 'canceled'];
@@ -43,6 +44,50 @@ function currentYearMonth(query = {}) {
     return { month, year };
 }
 
+function emptySummary({ month, year } = {}) {
+    return {
+        saldo_bancos: 0,
+        faturamento_total: 0,
+        previsto_mes: 0,
+        recebido: 0,
+        despesas_pessoais: 0,
+        despesas_trabalho: 0,
+        repasses: 0,
+        minha_parte: 0,
+        saldo_previsto: 0,
+        saldo_pessoal_previsto: 0,
+        recorrentes: 0,
+        divida_total: 0,
+        fatura_atual: 0,
+        parcelas_fixas: 0,
+        bank_balance: 0,
+        total_income_month: 0,
+        total_expense_month: 0,
+        personal_expenses: 0,
+        personal_expenses_month: 0,
+        work_expenses: 0,
+        recurring_expenses: 0,
+        card_expenses: 0,
+        personal_projected_balance: 0,
+        gross_revenue_total: 0,
+        gross_revenue_period: 0,
+        work_gross_revenue: 0,
+        expected_month: 0,
+        received: 0,
+        expected_to_receive: 0,
+        transfers: 0,
+        own_amount: 0,
+        work_own_amount: 0,
+        work_operational_expenses: 0,
+        projected_balance: 0,
+        total_debt: 0,
+        current_card_bill: 0,
+        fixed_installments: 0,
+        month,
+        year
+    };
+}
+
 async function ensurePersonalStatus(db, userId) {
     await db.run(`
         INSERT OR IGNORE INTO personal_status (user_id, total_bank_balance, total_debt, credit_card_bill)
@@ -61,50 +106,50 @@ function validatePayload(body, partial = false) {
     const errors = [];
 
     if (!partial || body.type !== undefined) {
-        if (!TYPES.includes(body.type)) errors.push('Tipo invalido.');
+        if (!TYPES.includes(body.type)) errors.push('Tipo inválido.');
     }
 
     if (!partial || body.description !== undefined) {
-        if (!isNonEmptyString(body.description, 180)) errors.push('Descricao obrigatoria.');
+        if (!isNonEmptyString(body.description, 180)) errors.push('Descrição obrigatória.');
     }
 
     if (!partial || body.category !== undefined) {
-        if (!isNonEmptyString(body.category, 100)) errors.push('Categoria obrigatoria.');
+        if (!isNonEmptyString(body.category, 100)) errors.push('Categoria obrigatória.');
     }
 
     if (!partial || body.amount !== undefined) {
-        if (!isNonNegativeMoney(body.amount) || toMoney(body.amount) === 0) errors.push('Valor positivo e obrigatorio.');
+        if (!isNonNegativeMoney(body.amount) || toMoney(body.amount) === 0) errors.push('Valor positivo e obrigatório.');
     }
 
     if (!partial || body.date !== undefined) {
-        if (!isDate(body.date)) errors.push('Data invalida.');
+        if (!isDate(body.date)) errors.push('Data inválida.');
     }
 
     if (body.payment_due_date !== undefined && body.payment_due_date && !isDate(body.payment_due_date)) {
-        errors.push('Data prevista invalida.');
+        errors.push('Data prevista inválida.');
     }
 
     if (body.paid_at !== undefined && body.paid_at && !isDate(body.paid_at)) {
-        errors.push('Data de pagamento invalida.');
+        errors.push('Data de pagamento inválida.');
     }
 
     ['gross_amount', 'own_amount', 'transfer_amount'].forEach(field => {
         if (body[field] !== undefined && body[field] !== null && body[field] !== '' && !isNonNegativeMoney(body[field])) {
-            errors.push('Valor invalido.');
+            errors.push('Valor inválido.');
         }
     });
 
-    if (body.status !== undefined && !STATUSES.includes(body.status)) errors.push('Status invalido.');
+    if (body.status !== undefined && !STATUSES.includes(body.status)) errors.push('Status inválido.');
 
     const hasSource = body.source !== undefined || body.origin_type !== undefined;
-    if (hasSource && !SOURCES.includes(normalizeSource(body))) errors.push('Origem invalida.');
+    if (hasSource && !SOURCES.includes(normalizeSource(body))) errors.push('Origem inválida.');
 
     if (body.financial_scope !== undefined && !FINANCIAL_SCOPES.includes(body.financial_scope)) {
-        errors.push('Escopo financeiro invalido.');
+        errors.push('Escopo financeiro inválido.');
     }
 
     if (body.recurrence_frequency !== undefined && body.recurrence_frequency && !RECURRENCE_FREQUENCIES.includes(body.recurrence_frequency)) {
-        errors.push('Frequencia de recorrencia invalida.');
+        errors.push('Frequência de recorrência inválida.');
     }
 
     return errors;
@@ -288,7 +333,7 @@ module.exports = {
                 params.push(normalizeBoolean(is_recurring));
             }
             if (month && year) {
-                query += " AND strftime('%m', COALESCE(payment_due_date, date)) = ? AND strftime('%Y', COALESCE(payment_due_date, date)) = ?";
+                query += ` AND ${monthYearFilter(db, 'COALESCE(payment_due_date, date)')}`;
                 params.push(String(month).padStart(2, '0'), String(year));
             }
             if (from) {
@@ -306,7 +351,7 @@ module.exports = {
             return res.json(transactions.map(serializeTransaction));
         } catch (error) {
             console.error('[PersonalTransactionController.index]', error);
-            return res.status(500).json({ error: 'Erro ao buscar lancamentos pessoais.' });
+            return res.status(500).json({ error: 'Erro ao buscar lançamentos pessoais.' });
         }
     },
 
@@ -359,10 +404,10 @@ module.exports = {
                 normalizeBoolean(req.body.is_recurring)
             ]);
 
-            return res.status(201).json({ id: result.lastID, message: 'Lancamento pessoal criado.' });
+            return res.status(201).json({ id: result.lastID, message: 'Lançamento pessoal criado.' });
         } catch (error) {
             console.error('[PersonalTransactionController.create]', error);
-            return res.status(500).json({ error: 'Erro ao criar lancamento pessoal.' });
+            return res.status(500).json({ error: 'Erro ao criar lançamento pessoal.' });
         }
     },
 
@@ -371,7 +416,7 @@ module.exports = {
             const { id } = req.params;
             const db = await connectDb();
             const transaction = await findOwnTransaction(db, id, req.userId);
-            if (!transaction) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (!transaction) return res.status(404).json({ error: 'Lançamento não encontrado.' });
 
             const errors = validatePayload(req.body, true);
             if (errors.length > 0) return res.status(400).json({ error: errors[0] });
@@ -445,10 +490,10 @@ module.exports = {
                 req.userId
             ]);
 
-            return res.json({ message: 'Lancamento pessoal atualizado.' });
+            return res.json({ message: 'Lançamento pessoal atualizado.' });
         } catch (error) {
             console.error('[PersonalTransactionController.update]', error);
-            return res.status(500).json({ error: 'Erro ao atualizar lancamento pessoal.' });
+            return res.status(500).json({ error: 'Erro ao atualizar lançamento pessoal.' });
         }
     },
 
@@ -456,11 +501,11 @@ module.exports = {
         try {
             const { id } = req.params;
             const { status } = req.body;
-            if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Status invalido.' });
+            if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Status inválido.' });
 
             const db = await connectDb();
             const transaction = await findOwnTransaction(db, id, req.userId);
-            if (!transaction) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (!transaction) return res.status(404).json({ error: 'Lançamento não encontrado.' });
 
             await db.run(
                 'UPDATE personal_transactions SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
@@ -479,17 +524,17 @@ module.exports = {
             const { id } = req.params;
             const db = await connectDb();
             const transaction = await findOwnTransaction(db, id, req.userId);
-            if (!transaction) return res.status(404).json({ error: 'Lancamento nao encontrado.' });
+            if (!transaction) return res.status(404).json({ error: 'Lançamento não encontrado.' });
 
             await db.run(
                 'UPDATE personal_transactions SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
                 [id, req.userId]
             );
 
-            return res.json({ message: 'Lancamento arquivado.' });
+            return res.json({ message: 'Lançamento arquivado.' });
         } catch (error) {
             console.error('[PersonalTransactionController.destroy]', error);
-            return res.status(500).json({ error: 'Erro ao arquivar lancamento.' });
+            return res.status(500).json({ error: 'Erro ao arquivar lançamento.' });
         }
     },
 
@@ -499,37 +544,45 @@ module.exports = {
             await ensurePersonalStatus(db, req.userId);
             const { month, year } = currentYearMonth(req.query);
             const hasPeriodFilter = Boolean(req.query.month && req.query.year);
+            const fallbackSummary = emptySummary({ month, year });
 
             const status = await db.get('SELECT * FROM personal_status WHERE user_id = ?', [req.userId]);
             const fixed = await db.get(
                 'SELECT SUM(installment_value) as total FROM renegotiations WHERE active = 1 AND user_id = ?',
                 [req.userId]
             );
+            const periodPredicate = hasPeriodFilter
+                ? `AND ${monthYearFilter(db, 'date')}`
+                : '';
+
+            const totalsParams = [req.userId];
+            if (hasPeriodFilter) totalsParams.push(month, year);
+
             const totals = await db.get(`
                 SELECT
-                    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
-                    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
-                    SUM(CASE WHEN type = 'income' THEN COALESCE(gross_amount, amount) ELSE 0 END) as gross_income,
-                    SUM(COALESCE(transfer_amount, CASE WHEN financial_type = 'transfer' THEN amount ELSE 0 END)) as transfers,
-                    SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END) as own_amount,
-                    SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' THEN amount ELSE 0 END) as personal_expenses,
-                    SUM(CASE WHEN type = 'expense' AND financial_scope IN ('work', 'project') AND COALESCE(financial_type, '') != 'transfer' THEN amount ELSE 0 END) as work_expenses,
-                    SUM(CASE WHEN type = 'expense' AND is_recurring = 1 THEN amount ELSE 0 END) as recurring_expenses,
-                    SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' AND (LOWER(category) LIKE '%cart%' OR LOWER(COALESCE(payment_method, '')) LIKE '%cart%') THEN amount ELSE 0 END) as card_expenses
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as income,
+                    COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as expense,
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN COALESCE(gross_amount, amount) ELSE 0 END), 0) as gross_income,
+                    COALESCE(SUM(COALESCE(transfer_amount, CASE WHEN financial_type = 'transfer' THEN amount ELSE 0 END)), 0) as transfers,
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END), 0) as own_amount,
+                    COALESCE(SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' THEN amount ELSE 0 END), 0) as personal_expenses,
+                    COALESCE(SUM(CASE WHEN type = 'expense' AND financial_scope IN ('work', 'project') AND COALESCE(financial_type, '') != 'transfer' THEN amount ELSE 0 END), 0) as work_expenses,
+                    COALESCE(SUM(CASE WHEN type = 'expense' AND is_recurring = 1 THEN amount ELSE 0 END), 0) as recurring_expenses,
+                    COALESCE(SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' AND (LOWER(category) LIKE '%cart%' OR LOWER(COALESCE(payment_method, '')) LIKE '%cart%') THEN amount ELSE 0 END), 0) as card_expenses
                 FROM personal_transactions
                 WHERE user_id = ?
                   AND archived = 0
                   AND status != 'canceled'
-                  AND (? = 0 OR (strftime('%m', date) = ? AND strftime('%Y', date) = ?))
-            `, [req.userId, hasPeriodFilter ? 1 : 0, month, year]);
+                  ${periodPredicate}
+            `, totalsParams);
 
             const allTotals = await db.get(`
                 SELECT
-                    SUM(CASE WHEN type = 'income' THEN COALESCE(gross_amount, amount) ELSE 0 END) as gross_income,
-                    SUM(COALESCE(transfer_amount, CASE WHEN financial_type = 'transfer' THEN amount ELSE 0 END)) as transfers,
-                    SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END) as own_amount,
-                    SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' THEN amount ELSE 0 END) as personal_expenses,
-                    SUM(CASE WHEN type = 'expense' AND financial_scope IN ('work', 'project') AND COALESCE(financial_type, '') != 'transfer' THEN amount ELSE 0 END) as work_expenses
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN COALESCE(gross_amount, amount) ELSE 0 END), 0) as gross_income,
+                    COALESCE(SUM(COALESCE(transfer_amount, CASE WHEN financial_type = 'transfer' THEN amount ELSE 0 END)), 0) as transfers,
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN COALESCE(own_amount, amount) ELSE 0 END), 0) as own_amount,
+                    COALESCE(SUM(CASE WHEN type = 'expense' AND financial_scope = 'personal' THEN amount ELSE 0 END), 0) as personal_expenses,
+                    COALESCE(SUM(CASE WHEN type = 'expense' AND financial_scope IN ('work', 'project') AND COALESCE(financial_type, '') != 'transfer' THEN amount ELSE 0 END), 0) as work_expenses
                 FROM personal_transactions
                 WHERE user_id = ?
                   AND archived = 0
@@ -538,15 +591,14 @@ module.exports = {
 
             const expected = await db.get(`
                 SELECT
-                    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as expected_income,
-                    SUM(CASE WHEN type = 'income' AND status = 'paid' THEN amount ELSE 0 END) as received_income,
-                    SUM(CASE WHEN type = 'income' AND status != 'paid' THEN amount ELSE 0 END) as pending_income
+                    COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as expected_income,
+                    COALESCE(SUM(CASE WHEN type = 'income' AND status = 'paid' THEN amount ELSE 0 END), 0) as received_income,
+                    COALESCE(SUM(CASE WHEN type = 'income' AND status != 'paid' THEN amount ELSE 0 END), 0) as pending_income
                 FROM personal_transactions
                 WHERE user_id = ?
                   AND archived = 0
                   AND status != 'canceled'
-                  AND strftime('%m', COALESCE(payment_due_date, date)) = ?
-                  AND strftime('%Y', COALESCE(payment_due_date, date)) = ?
+                  AND ${monthYearFilter(db, 'COALESCE(payment_due_date, date)')}
             `, [req.userId, month, year]);
 
             const bankBalance = Number(status.total_bank_balance || 0);
@@ -554,6 +606,21 @@ module.exports = {
             const expense = Number(totals.expense || 0);
 
             return res.json({
+                ...fallbackSummary,
+                saldo_bancos: bankBalance,
+                faturamento_total: Number(allTotals.gross_income || 0),
+                previsto_mes: Number(expected.expected_income || 0),
+                recebido: Number(expected.received_income || 0),
+                despesas_pessoais: Number(totals.personal_expenses || 0),
+                despesas_trabalho: Number(totals.work_expenses || 0),
+                repasses: Number(totals.transfers || 0),
+                minha_parte: Number(totals.own_amount || allTotals.own_amount || 0),
+                saldo_previsto: bankBalance + income - expense,
+                saldo_pessoal_previsto: bankBalance + income - Number(totals.personal_expenses || 0),
+                recorrentes: Number(totals.recurring_expenses || 0),
+                divida_total: Number(status.total_debt || 0),
+                fatura_atual: Number(status.credit_card_bill || 0),
+                parcelas_fixas: Number(fixed.total || 0),
                 bank_balance: bankBalance,
                 total_income_month: income,
                 total_expense_month: expense,
@@ -582,7 +649,8 @@ module.exports = {
             });
         } catch (error) {
             console.error('[PersonalTransactionController.summary]', error);
-            return res.status(500).json({ error: 'Erro ao carregar resumo pessoal.' });
+            const { month, year } = currentYearMonth(req.query);
+            return res.json(emptySummary({ month, year }));
         }
     }
 };

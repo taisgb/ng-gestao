@@ -70,7 +70,7 @@ export default function Login() {
         </form>
 
         <div className="login-footer">
-          <p>Ainda nao tem uma conta? <Link to="/cadastro">Criar conta</Link></p>
+          <p>Ainda não tem uma conta? <Link to="/cadastro">Criar conta</Link></p>
         </div>
       </div>
     </div>

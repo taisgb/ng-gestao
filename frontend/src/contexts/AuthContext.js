@@ -8,7 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Quando a aplicação recarrega, verifica se o utilizador já estava logado
+    // Quando a aplicação recarrega, verifica se o usuário já estava logado
     function loadStorageData() {
       const storedUser = localStorage.getItem('@Gestao:user');
       const storedToken = localStorage.getItem('@Gestao:token');

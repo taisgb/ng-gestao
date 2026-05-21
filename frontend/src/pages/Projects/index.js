@@ -9,13 +9,14 @@ const PROJECT_STATUS_META = {
   pendente: { label: 'Pendente', className: 'pending' },
   aprovado: { label: 'Aprovado', className: 'approved' },
   'em andamento': { label: 'Em andamento', className: 'in-progress' },
-  concluido: { label: 'Concluido', className: 'done' },
-  'concluído': { label: 'Concluido', className: 'done' },
+  done: { label: 'Concluído', className: 'done' },
   garantia: { label: 'Garantia', className: 'warranty' }
 };
 
 function getProjectStatusMeta(status) {
   const normalized = String(status || 'pendente').toLowerCase().trim();
+  const normalizedKey = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (normalizedKey.startsWith('conclu')) return PROJECT_STATUS_META.done;
   return PROJECT_STATUS_META[normalized] || {
     label: status || 'Pendente',
     className: normalized.replace(/\s+/g, '-').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -52,7 +53,7 @@ export default function Projects() {
   const isLimitReached = user?.plan === 'free' && activeProjectsCount >= 5;
 
   async function handleArchive(project) {
-    const confirmed = window.confirm('Deseja arquivar este projeto? Ele saira da lista principal, mas podera ser restaurado depois.');
+    const confirmed = window.confirm('Deseja arquivar este projeto? Ele sairá da lista principal, mas poderá ser restaurado depois.');
     if (!confirmed) return;
 
     try {
@@ -75,7 +76,7 @@ export default function Projects() {
   }
 
   function canArchiveOrRestore(project) {
-    return ['owner', 'admin', 'gestor'].includes(project.access_role);
+    return Boolean(project.can_edit || ['owner', 'admin', 'gestor'].includes(project.access_role));
   }
 
   return (

@@ -35,16 +35,16 @@ module.exports = {
             const defaultValue = getMoneyValue(req.body);
 
             if (!isNonEmptyString(name, 100)) {
-                return res.status(400).json({ error: 'Informe o nome do servico.' });
+                return res.status(400).json({ error: 'Informe o nome do serviço.' });
             }
 
             if (defaultValue !== undefined && !isNonNegativeMoney(defaultValue)) {
-                return res.status(400).json({ error: 'Valor padrao invalido.' });
+                return res.status(400).json({ error: 'Valor padrão inválido.' });
             }
 
             const db = await connectDb();
             if (team_id && !await canEditTeamResource(db, req.userId, team_id)) {
-                return res.status(403).json({ error: 'Sem permissao para criar servicos neste time.' });
+                return res.status(403).json({ error: 'Sem permissão para criar serviços neste time.' });
             }
 
             const money = toMoney(defaultValue);
@@ -63,10 +63,10 @@ module.exports = {
                 description || null
             ]);
 
-            return res.status(201).json({ id: result.lastID, message: 'Servico cadastrado.' });
+            return res.status(201).json({ id: result.lastID, message: 'Serviço cadastrado.' });
         } catch (error) {
             console.error('[ServiceController.create]', error);
-            return res.status(500).json({ error: 'Erro ao cadastrar servico.' });
+            return res.status(500).json({ error: 'Erro ao cadastrar serviço.' });
         }
     },
 
@@ -106,7 +106,7 @@ module.exports = {
             return res.json(services);
         } catch (error) {
             console.error('[ServiceController.index]', error);
-            return res.status(500).json({ error: 'Erro ao buscar servicos.' });
+            return res.status(500).json({ error: 'Erro ao buscar serviços.' });
         }
     },
 
@@ -119,19 +119,19 @@ module.exports = {
             const service = await getServiceAccess(db, id, req.userId);
 
             if (!service || !service.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para editar este servico.' });
+                return res.status(403).json({ error: 'Sem permissão para editar este serviço.' });
             }
 
             if (name !== undefined && !isNonEmptyString(name, 100)) {
-                return res.status(400).json({ error: 'Nome invalido.' });
+                return res.status(400).json({ error: 'Nome inválido.' });
             }
 
             if (defaultValue !== undefined && !isNonNegativeMoney(defaultValue)) {
-                return res.status(400).json({ error: 'Valor padrao invalido.' });
+                return res.status(400).json({ error: 'Valor padrão inválido.' });
             }
 
             if (team_id && !await canEditTeamResource(db, req.userId, team_id)) {
-                return res.status(403).json({ error: 'Sem permissao para mover servico para este time.' });
+                return res.status(403).json({ error: 'Sem permissão para mover serviço para este time.' });
             }
 
             const nextTeamId = team_id === undefined ? service.team_id : team_id || null;
@@ -159,13 +159,13 @@ module.exports = {
             ]);
 
             if (result.changes === 0) {
-                return res.status(404).json({ error: 'Servico nao encontrado.' });
+                return res.status(404).json({ error: 'Serviço não encontrado.' });
             }
 
-            return res.json({ message: 'Servico atualizado.' });
+            return res.json({ message: 'Serviço atualizado.' });
         } catch (error) {
             console.error('[ServiceController.update]', error);
-            return res.status(500).json({ error: 'Erro ao atualizar servico.' });
+            return res.status(500).json({ error: 'Erro ao atualizar serviço.' });
         }
     },
 
@@ -176,7 +176,7 @@ module.exports = {
             const service = await getServiceAccess(db, id, req.userId);
 
             if (!service || !service.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para arquivar este servico.' });
+                return res.status(403).json({ error: 'Sem permissão para arquivar este serviço.' });
             }
 
             const result = await db.run(
@@ -185,13 +185,13 @@ module.exports = {
             );
 
             if (result.changes === 0) {
-                return res.status(404).json({ error: 'Servico nao encontrado.' });
+                return res.status(404).json({ error: 'Serviço não encontrado.' });
             }
 
-            return res.json({ message: 'Servico arquivado.' });
+            return res.json({ message: 'Serviço arquivado.' });
         } catch (error) {
             console.error('[ServiceController.archive]', error);
-            return res.status(500).json({ error: 'Erro ao arquivar servico.' });
+            return res.status(500).json({ error: 'Erro ao arquivar serviço.' });
         }
     },
 
@@ -202,7 +202,7 @@ module.exports = {
             const service = await getServiceAccess(db, id, req.userId);
 
             if (!service || !service.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para restaurar este servico.' });
+                return res.status(403).json({ error: 'Sem permissão para restaurar este serviço.' });
             }
 
             const result = await db.run(
@@ -211,13 +211,13 @@ module.exports = {
             );
 
             if (result.changes === 0) {
-                return res.status(404).json({ error: 'Servico nao encontrado.' });
+                return res.status(404).json({ error: 'Serviço não encontrado.' });
             }
 
-            return res.json({ message: 'Servico restaurado com sucesso.' });
+            return res.json({ message: 'Serviço restaurado com sucesso.' });
         } catch (error) {
             console.error('[ServiceController.restore]', error);
-            return res.status(500).json({ error: 'Erro ao restaurar servico.' });
+            return res.status(500).json({ error: 'Erro ao restaurar serviço.' });
         }
     },
 

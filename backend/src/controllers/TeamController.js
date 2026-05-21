@@ -45,7 +45,7 @@ module.exports = {
         try {
             const { name, description } = req.body;
             if (!isNonEmptyString(name, 120)) {
-                return res.status(400).json({ error: 'Nome do time e obrigatorio.' });
+                return res.status(400).json({ error: 'Nome do time é obrigatório.' });
             }
 
             const db = await connectDb();
@@ -73,7 +73,7 @@ module.exports = {
             const db = await connectDb();
             const role = await getTeamRole(db, req.userId, id);
 
-            if (!role) return res.status(404).json({ error: 'Time nao encontrado ou acesso negado.' });
+            if (!role) return res.status(404).json({ error: 'Time não encontrado ou acesso negado.' });
 
             const team = await db.get('SELECT * FROM teams WHERE id = ? AND archived = 0', [id]);
             return res.json({ ...team, my_role: role });
@@ -90,11 +90,11 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canEditTeam(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para editar este time.' });
+                return res.status(403).json({ error: 'Sem permissão para editar este time.' });
             }
 
             if (name !== undefined && !isNonEmptyString(name, 120)) {
-                return res.status(400).json({ error: 'Nome invalido.' });
+                return res.status(400).json({ error: 'Nome inválido.' });
             }
 
             await db.run(`
@@ -122,7 +122,7 @@ module.exports = {
             }
 
             const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
-            if (!team) return res.status(404).json({ error: 'Time nao encontrado.' });
+            if (!team) return res.status(404).json({ error: 'Time não encontrado.' });
 
             const activeProjects = await db.get(
                 'SELECT COUNT(*) as total FROM projects WHERE team_id = ? AND COALESCE(archived, 0) = 0',
@@ -151,7 +151,7 @@ module.exports = {
 
             if (blockers.active_projects || blockers.active_members || blockers.pending_financial_entries) {
                 return res.status(409).json({
-                    error: 'Nao e possivel excluir este time com projetos ativos, membros ativos ou financeiro pendente. Arquive o time ou resolva as pendencias primeiro.',
+                    error: 'Não é possível excluir este time com projetos ativos, membros ativos ou financeiro pendente. Arquive o time ou resolva as pendências primeiro.',
                     blockers
                 });
             }
@@ -168,7 +168,7 @@ module.exports = {
             await db.run('DELETE FROM teams WHERE id = ?', [id]);
 
             await logActivity(db, req.userId, 'delete', 'team', id, { blockers });
-            return res.json({ message: 'Time excluido.' });
+            return res.json({ message: 'Time excluído.' });
         } catch (error) {
             console.error('[TeamController.destroy]', error);
             return res.status(500).json({ error: 'Erro ao excluir time.' });
@@ -244,11 +244,11 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canInviteTeamMember(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para gerenciar membros.' });
+                return res.status(403).json({ error: 'Sem permissão para gerenciar membros.' });
             }
 
             if (!isEmail(email) || !TEAM_ROLES.includes(role) || role === 'owner') {
-                return res.status(400).json({ error: 'Email ou papel invalido.' });
+                return res.status(400).json({ error: 'Email ou papel inválido.' });
             }
 
             const user = await db.get('SELECT id FROM users WHERE email = ?', [email]);
@@ -290,19 +290,19 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canManageTeamMembers(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para gerenciar membros.' });
+                return res.status(403).json({ error: 'Sem permissão para gerenciar membros.' });
             }
 
             const member = await db.get('SELECT * FROM team_members WHERE id = ? AND team_id = ?', [memberId, id]);
-            if (!member) return res.status(404).json({ error: 'Membro nao encontrado.' });
-            if (member.role === 'owner') return res.status(403).json({ error: 'Nao e permitido alterar owner por aqui.' });
+            if (!member) return res.status(404).json({ error: 'Membro não encontrado.' });
+            if (member.role === 'owner') return res.status(403).json({ error: 'Não é permitido alterar o dono por aqui.' });
 
             if (role !== undefined && !await canChangeTeamRole(db, req.userId, id, role)) {
-                return res.status(403).json({ error: 'Sem permissao para alterar para este papel.' });
+                return res.status(403).json({ error: 'Sem permissão para alterar para este papel.' });
             }
 
             if (role !== undefined && (!TEAM_ROLES.includes(role) || role === 'owner')) {
-                return res.status(400).json({ error: 'Papel invalido.' });
+                return res.status(400).json({ error: 'Papel inválido.' });
             }
 
             await db.run(`
@@ -327,12 +327,12 @@ module.exports = {
             const db = await connectDb();
 
             if (!await canManageTeamMembers(db, req.userId, id)) {
-                return res.status(403).json({ error: 'Sem permissao para remover membros.' });
+                return res.status(403).json({ error: 'Sem permissão para remover membros.' });
             }
 
             const member = await db.get('SELECT * FROM team_members WHERE id = ? AND team_id = ?', [memberId, id]);
-            if (!member) return res.status(404).json({ error: 'Membro nao encontrado.' });
-            if (member.role === 'owner') return res.status(403).json({ error: 'Nao e permitido remover owner.' });
+            if (!member) return res.status(404).json({ error: 'Membro não encontrado.' });
+            if (member.role === 'owner') return res.status(403).json({ error: 'Não é permitido remover o dono.' });
 
             if (member.user_id) {
                 const ownedProjects = await db.get(`

@@ -112,35 +112,35 @@ module.exports = {
             const projectScope = scope === 'team' ? 'team' : 'individual';
 
             if (!client_id || !isNonEmptyString(projectTitle, 160)) {
-                return res.status(400).json({ error: 'Cliente e titulo sao obrigatorios.' });
+                return res.status(400).json({ error: 'Cliente e título são obrigatórios.' });
             }
 
             if (deadline && !isDate(deadline)) {
-                return res.status(400).json({ error: 'Prazo invalido.' });
+                return res.status(400).json({ error: 'Prazo inválido.' });
             }
 
             if (warranty_start_date && !isDate(warranty_start_date)) {
-                return res.status(400).json({ error: 'Data inicial da garantia invalida.' });
+                return res.status(400).json({ error: 'Data inicial da garantia inválida.' });
             }
 
             if (warranty_days !== undefined && warranty_days !== '' && (!Number.isInteger(Number(warranty_days)) || Number(warranty_days) < 0)) {
-                return res.status(400).json({ error: 'Prazo de garantia invalido.' });
+                return res.status(400).json({ error: 'Prazo de garantia inválido.' });
             }
 
             if (projectValue !== undefined && !isNonNegativeMoney(projectValue)) {
-                return res.status(400).json({ error: 'Valor do projeto invalido.' });
+                return res.status(400).json({ error: 'Valor do projeto inválido.' });
             }
 
             const client = await db.get('SELECT id, user_id, team_id FROM clients WHERE id = ? AND archived = 0', [client_id]);
 
             if (!client) {
-                return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+                return res.status(403).json({ error: 'Cliente não encontrado ou sem permissão.' });
             }
 
             const canUseClient = client.user_id === req.userId
                 || (client.team_id && await canViewTeamResource(db, req.userId, client.team_id));
             if (!canUseClient) {
-                return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+                return res.status(403).json({ error: 'Cliente não encontrado ou sem permissão.' });
             }
 
             let projectTeamId = null;
@@ -155,7 +155,7 @@ module.exports = {
                 }
 
                 if (!await canEditTeamResource(db, req.userId, projectTeamId)) {
-                    return res.status(403).json({ error: 'Sem permissao para criar projetos neste time.' });
+                    return res.status(403).json({ error: 'Sem permissão para criar projetos neste time.' });
                 }
 
                 for (const memberId of selectedMembers) {
@@ -174,7 +174,7 @@ module.exports = {
             if (user.plan === 'free') {
                 const count = await db.get('SELECT COUNT(*) as total FROM projects WHERE user_id = ? AND archived = 0', [req.userId]);
                 if (count.total >= 5) {
-                    return res.status(403).json({ error: 'Limite de 5 projetos atingido no plano Free. Faca upgrade para criar projetos ilimitados.' });
+                    return res.status(403).json({ error: 'Limite de 5 projetos atingido no plano Free. Faça upgrade para criar projetos ilimitados.' });
                 }
             }
 
@@ -362,12 +362,12 @@ module.exports = {
 
             const existingProject = await db.get('SELECT id FROM projects WHERE id = ?', [id]);
             if (!existingProject) {
-                return res.status(404).json({ error: 'Projeto nao encontrado.' });
+                return res.status(404).json({ error: 'Projeto não encontrado.' });
             }
 
             const project = await getProjectAccess(db, id, req.userId);
             if (!project) {
-                return res.status(403).json({ error: 'Sem permissao para acessar este projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para acessar este projeto.' });
             }
 
             const canSeeFinancials = await canViewProjectFinancials(db, req.userId, id);
@@ -392,7 +392,7 @@ module.exports = {
                 response.amount_paid = null;
                 response.payment_type = null;
                 response.payment_status = null;
-                response.financial_notice = 'Voce visualiza apenas sua propria parte financeira neste projeto.';
+                response.financial_notice = 'Você visualiza apenas sua própria parte financeira neste projeto.';
             }
 
             return res.json(response);
@@ -425,13 +425,13 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             const requestedFields = Object.keys(req.body);
             const canEditFinancials = await canEditProjectFinancials(db, req.userId, id);
             const sensitiveFields = ['base_value', 'payment_type', 'payment_status', 'amount_paid'];
             if (!canEditFinancials && requestedFields.some(field => sensitiveFields.includes(field))) {
-                return res.status(403).json({ error: 'Sem permissao para editar valores financeiros do projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para editar valores financeiros do projeto.' });
             }
 
             if (!['owner', 'admin', 'gestor'].includes(project.access_role) && requestedFields.some(field => field !== 'status')) {
@@ -440,38 +440,38 @@ module.exports = {
 
             const nextTitle = title !== undefined ? title : name;
             if (nextTitle !== undefined && !isNonEmptyString(nextTitle, 160)) {
-                return res.status(400).json({ error: 'Titulo invalido.' });
+                return res.status(400).json({ error: 'Título inválido.' });
             }
 
             if (deadline !== undefined && deadline !== null && deadline !== '' && !isDate(deadline)) {
-                return res.status(400).json({ error: 'Prazo invalido.' });
+                return res.status(400).json({ error: 'Prazo inválido.' });
             }
 
             const nextBaseValue = base_value !== undefined ? base_value : value;
             if (nextBaseValue !== undefined && !isNonNegativeMoney(nextBaseValue)) {
-                return res.status(400).json({ error: 'Valor do projeto invalido.' });
+                return res.status(400).json({ error: 'Valor do projeto inválido.' });
             }
 
             if (amount_paid !== undefined && !isNonNegativeMoney(amount_paid)) {
-                return res.status(400).json({ error: 'Valor pago invalido.' });
+                return res.status(400).json({ error: 'Valor pago inválido.' });
             }
 
             if (warranty_start_date !== undefined && warranty_start_date !== null && warranty_start_date !== '' && !isDate(warranty_start_date)) {
-                return res.status(400).json({ error: 'Data inicial da garantia invalida.' });
+                return res.status(400).json({ error: 'Data inicial da garantia inválida.' });
             }
 
             if (warranty_days !== undefined && warranty_days !== null && warranty_days !== '' && (!Number.isInteger(Number(warranty_days)) || Number(warranty_days) < 0)) {
-                return res.status(400).json({ error: 'Prazo de garantia invalido.' });
+                return res.status(400).json({ error: 'Prazo de garantia inválido.' });
             }
 
             let nextClientId = project.client_id;
             if (client_id !== undefined) {
                 const client = await db.get('SELECT id, user_id, team_id FROM clients WHERE id = ? AND archived = 0', [client_id]);
-                if (!client) return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+                if (!client) return res.status(403).json({ error: 'Cliente não encontrado ou sem permissão.' });
 
                 const canUseClient = client.user_id === req.userId
                     || (client.team_id && await canViewTeamResource(db, req.userId, client.team_id));
-                if (!canUseClient) return res.status(403).json({ error: 'Cliente nao encontrado ou sem permissao.' });
+                if (!canUseClient) return res.status(403).json({ error: 'Cliente não encontrado ou sem permissão.' });
                 nextClientId = Number(client_id);
             }
 
@@ -483,7 +483,7 @@ module.exports = {
                 nextTeamId = Number(team_id || project.team_id);
                 if (!nextTeamId) return res.status(400).json({ error: 'Selecione o time do projeto.' });
                 if (!await canEditTeamResource(db, req.userId, nextTeamId)) {
-                    return res.status(403).json({ error: 'Sem permissao para vincular este projeto ao time selecionado.' });
+                    return res.status(403).json({ error: 'Sem permissão para vincular este projeto ao time selecionado.' });
                 }
             }
 
@@ -495,7 +495,7 @@ module.exports = {
                 );
 
                 if (!statusExists) {
-                    return res.status(400).json({ error: 'Status invalido para este projeto.' });
+                    return res.status(400).json({ error: 'Status inválido para este projeto.' });
                 }
             }
 
@@ -527,7 +527,7 @@ module.exports = {
                 addField('warranty_end_date', calculateWarrantyEndDate(start, days));
             }
 
-            if (updates.length === 0) return res.json({ message: 'Nenhuma alteracao enviada.' });
+            if (updates.length === 0) return res.json({ message: 'Nenhuma alteração enviada.' });
 
             await db.run(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`, [...params, id]);
 
@@ -549,7 +549,7 @@ module.exports = {
             const db = await connectDb();
 
             if (!isEmail(email)) {
-                return res.status(400).json({ error: 'Informe um email valido.' });
+                return res.status(400).json({ error: 'Informe um email válido.' });
             }
 
             const project = await db.get(
@@ -563,11 +563,11 @@ module.exports = {
 
             const collaborator = await db.get('SELECT id, name, email FROM users WHERE email = ?', [email]);
             if (!collaborator) {
-                return res.status(404).json({ error: 'Usuario nao encontrado.' });
+                return res.status(404).json({ error: 'Usuário não encontrado.' });
             }
 
             if (collaborator.id === req.userId) {
-                return res.status(400).json({ error: 'Voce ja e o dono deste projeto.' });
+                return res.status(400).json({ error: 'Você já é o dono deste projeto.' });
             }
 
             await db.run(`
@@ -603,7 +603,7 @@ module.exports = {
             const project = await db.get('SELECT * FROM projects WHERE id = ?', [id]);
 
             if (!project) {
-                return res.status(404).json({ error: 'Projeto nao encontrado.' });
+                return res.status(404).json({ error: 'Projeto não encontrado.' });
             }
 
             if (!isProjectOwner(project, req.userId)) {
@@ -611,17 +611,17 @@ module.exports = {
             }
 
             if (Number(project.user_id) === newOwnerId) {
-                return res.status(400).json({ error: 'Este usuario ja e o dono do projeto.' });
+                return res.status(400).json({ error: 'Este usuário já é o dono do projeto.' });
             }
 
             const newOwner = await db.get('SELECT id, name, email FROM users WHERE id = ?', [newOwnerId]);
             if (!newOwner) {
-                return res.status(404).json({ error: 'Novo dono nao encontrado.' });
+                return res.status(404).json({ error: 'Novo dono não encontrado.' });
             }
 
             const newOwnerAccess = await getSharedProjectAccess(db, newOwnerId, id);
             if (!newOwnerAccess) {
-                return res.status(403).json({ error: 'O novo dono precisa ja ter acesso ao projeto.' });
+                return res.status(403).json({ error: 'O novo dono precisa já ter acesso ao projeto.' });
             }
 
             await db.run('UPDATE projects SET user_id = ? WHERE id = ?', [newOwnerId, id]);
@@ -663,7 +663,7 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             const members = await getProjectMembers(db, id);
 
@@ -681,18 +681,18 @@ module.exports = {
             const db = await connectDb();
 
             if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
-                return res.status(400).json({ error: 'Membro invalido.' });
+                return res.status(400).json({ error: 'Membro inválido.' });
             }
 
             const project = await getProjectAccess(db, projectId, req.userId);
             if (!project) {
-                return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+                return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             }
 
             const isTeamEditor = project.scope === 'team' && ['owner', 'admin', 'gestor'].includes(project.access_role);
             const canRemove = project.access_role === 'owner' || isTeamEditor;
             if (!canRemove) {
-                return res.status(403).json({ error: 'Sem permissao para remover membros deste projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para remover membros deste projeto.' });
             }
 
             if (Number(project.user_id) === targetUserId) {
@@ -704,7 +704,7 @@ module.exports = {
                 [projectId, targetUserId]
             );
             if (!member) {
-                return res.status(404).json({ error: 'Membro nao encontrado neste projeto.' });
+                return res.status(404).json({ error: 'Membro não encontrado neste projeto.' });
             }
             if (member.role === 'owner') {
                 return res.status(403).json({ error: 'Transfira a propriedade antes de remover o dono atual.' });
@@ -727,7 +727,7 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             await ensureDefaultStatuses(db, id);
 
@@ -754,7 +754,7 @@ module.exports = {
             }
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             const nextPosition = await db.get(
                 'SELECT COALESCE(MAX(position), 0) + 1 as position FROM project_statuses WHERE project_id = ?',
@@ -769,7 +769,7 @@ module.exports = {
             return res.status(201).json({ id: result.lastID, name: name.trim(), position: nextPosition.position });
         } catch (error) {
             if (error.message && error.message.includes('UNIQUE')) {
-                return res.status(400).json({ error: 'Este status ja existe no projeto.' });
+                return res.status(400).json({ error: 'Este status já existe no projeto.' });
             }
 
             console.error('[ProjectController.createStatus]', error);
@@ -783,7 +783,7 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             const notes = await db.all(`
                 SELECT pn.*, u.name as author_name
@@ -807,11 +807,11 @@ module.exports = {
             const db = await connectDb();
 
             if (!isNonEmptyString(note, 2000)) {
-                return res.status(400).json({ error: 'Escreva uma anotacao.' });
+                return res.status(400).json({ error: 'Escreva uma anotação.' });
             }
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             const result = await db.run(
                 'INSERT INTO project_notes (project_id, user_id, note) VALUES (?, ?, ?)',
@@ -828,7 +828,7 @@ module.exports = {
             return res.status(201).json(created);
         } catch (error) {
             console.error('[ProjectController.createNote]', error);
-            return res.status(500).json({ error: 'Erro ao criar anotacao.' });
+            return res.status(500).json({ error: 'Erro ao criar anotação.' });
         }
     },
 
@@ -838,7 +838,7 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
 
             await ensureFinancialShares(db, id);
             const canViewGlobal = await canViewProjectFinancials(db, req.userId, id);
@@ -888,7 +888,7 @@ module.exports = {
             });
         } catch (error) {
             console.error('[ProjectController.finance]', error);
-            return res.status(500).json({ error: 'Erro ao carregar divisao financeira.' });
+            return res.status(500).json({ error: 'Erro ao carregar divisão financeira.' });
         }
     },
 
@@ -899,18 +899,18 @@ module.exports = {
             const db = await connectDb();
 
             const project = await getProjectAccess(db, id, req.userId);
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             const canEditFinancials = await canEditProjectFinancials(db, req.userId, id);
 
             if (!canEditFinancials) {
-                return res.status(403).json({ error: 'Sem permissao para editar a divisao financeira do projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para editar a divisão financeira do projeto.' });
             }
 
             await ensureFinancialShares(db, id);
 
             if (total_value !== undefined) {
                 if (!isNonNegativeMoney(total_value)) {
-                    return res.status(400).json({ error: 'Valor total invalido.' });
+                    return res.status(400).json({ error: 'Valor total inválido.' });
                 }
 
                 await db.run('UPDATE projects SET base_value = ? WHERE id = ?', [toMoney(total_value), id]);
@@ -922,7 +922,7 @@ module.exports = {
                     const amount = toMoney(share.amount);
 
                     if (!userId || !isNonNegativeMoney(amount)) {
-                        return res.status(400).json({ error: 'Participante ou valor invalido.' });
+                        return res.status(400).json({ error: 'Participante ou valor inválido.' });
                     }
 
                     const member = await db.get(`
@@ -934,7 +934,7 @@ module.exports = {
                     `, [userId, id, userId]);
 
                     if (!member) {
-                        return res.status(400).json({ error: 'Participante invalido para este projeto.' });
+                        return res.status(400).json({ error: 'Participante inválido para este projeto.' });
                     }
 
                     await db.run(`
@@ -947,10 +947,10 @@ module.exports = {
                 }
             }
 
-            return res.json({ message: 'Divisao financeira atualizada.' });
+            return res.json({ message: 'Divisão financeira atualizada.' });
         } catch (error) {
             console.error('[ProjectController.updateFinance]', error);
-            return res.status(500).json({ error: 'Erro ao atualizar divisao financeira.' });
+            return res.status(500).json({ error: 'Erro ao atualizar divisão financeira.' });
         }
     },
 
@@ -960,9 +960,9 @@ module.exports = {
             const db = await connectDb();
             const project = await getProjectAccess(db, id, req.userId);
 
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             if (!['owner', 'admin', 'gestor'].includes(project.access_role)) {
-                return res.status(403).json({ error: 'Sem permissao para arquivar este projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para arquivar este projeto.' });
             }
 
             await db.run(
@@ -983,9 +983,9 @@ module.exports = {
             const db = await connectDb();
             const project = await getProjectAccess(db, id, req.userId);
 
-            if (!project) return res.status(404).json({ error: 'Projeto nao encontrado ou acesso negado.' });
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             if (!['owner', 'admin', 'gestor'].includes(project.access_role)) {
-                return res.status(403).json({ error: 'Sem permissao para restaurar este projeto.' });
+                return res.status(403).json({ error: 'Sem permissão para restaurar este projeto.' });
             }
 
             await db.run('UPDATE projects SET archived = 0, archived_at = NULL WHERE id = ?', [id]);

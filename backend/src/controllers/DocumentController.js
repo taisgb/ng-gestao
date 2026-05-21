@@ -117,7 +117,12 @@ async function resolveAccess(db, userId, payload) {
         const access = await getFinancialEntryAccess(db, payload.project_financial_entry_id, userId);
         if (!access) return { can_view: false, can_edit: false };
         inferredTeamId = inferredTeamId || access.team_id || null;
-        return { can_view: true, can_edit: access.can_edit, inferred_team_id: inferredTeamId };
+        return {
+            can_view: true,
+            can_edit: access.can_edit,
+            inferred_team_id: inferredTeamId,
+            inferred_project_id: access.project_id || null
+        };
     }
 
     if (payload.project_id) {
@@ -127,7 +132,8 @@ async function resolveAccess(db, userId, payload) {
         return {
             can_view: true,
             can_edit: ['owner', 'admin', 'gestor'].includes(project.access_role),
-            inferred_team_id: inferredTeamId
+            inferred_team_id: inferredTeamId,
+            inferred_project_id: payload.project_id
         };
     }
 
@@ -142,7 +148,12 @@ async function resolveAccess(db, userId, payload) {
         const invoiceAccess = await getInvoiceAccess(db, payload.invoice_id, userId);
         if (!invoiceAccess) return { can_view: false, can_edit: false };
         inferredTeamId = inferredTeamId || invoiceAccess.team_id || null;
-        return { can_view: true, can_edit: invoiceAccess.can_edit, inferred_team_id: inferredTeamId };
+        return {
+            can_view: true,
+            can_edit: invoiceAccess.can_edit,
+            inferred_team_id: inferredTeamId,
+            inferred_project_id: invoiceAccess.project_id || null
+        };
     }
 
     if (payload.team_id) {
@@ -164,13 +175,13 @@ async function resolveAccess(db, userId, payload) {
 
 function validatePayload(body, partial = false) {
     if (!partial || body.file_name !== undefined) {
-        if (!isNonEmptyString(body.file_name, 180)) return 'Nome do documento e obrigatorio.';
+        if (!isNonEmptyString(body.file_name, 180)) return 'Nome do documento é obrigatório.';
     }
     if (!partial || body.file_url !== undefined) {
-        if (!isNonEmptyString(body.file_url, 1000) || !isUrl(body.file_url)) return 'Link do documento invalido.';
+        if (!isNonEmptyString(body.file_url, 1000) || !isUrl(body.file_url)) return 'Link do documento inválido.';
     }
-    if (body.provider !== undefined && !PROVIDERS.includes(body.provider)) return 'Provider invalido.';
-    if (body.document_type !== undefined && !TYPES.includes(body.document_type)) return 'Tipo de documento invalido.';
+    if (body.provider !== undefined && !PROVIDERS.includes(body.provider)) return 'Provider inválido.';
+    if (body.document_type !== undefined && !TYPES.includes(body.document_type)) return 'Tipo de documento inválido.';
     return null;
 }
 
@@ -258,10 +269,11 @@ module.exports = {
             const db = await connectDb();
             const access = await resolveAccess(db, req.userId, req.body);
             if (!access.can_view || !access.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para criar documento neste contexto.' });
+                return res.status(403).json({ error: 'Sem permissão para criar documento neste contexto.' });
             }
 
             const teamId = req.body.team_id || access.inferred_team_id || null;
+            const projectId = req.body.project_id || access.inferred_project_id || null;
             const result = await db.run(`
                 INSERT INTO documents (
                     user_id, team_id, client_id, project_id, invoice_id, transaction_id, project_financial_entry_id,
@@ -272,7 +284,7 @@ module.exports = {
                 req.userId,
                 teamId,
                 req.body.client_id || null,
-                req.body.project_id || null,
+                projectId,
                 req.body.invoice_id || null,
                 req.body.transaction_id || null,
                 req.body.project_financial_entry_id || null,
@@ -300,7 +312,7 @@ module.exports = {
 
             const db = await connectDb();
             const document = await getDocumentAccess(db, req.params.id, req.userId);
-            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para editar documento.' });
+            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissão para editar documento.' });
 
             const nextDocument = {
                 ...document,
@@ -315,7 +327,7 @@ module.exports = {
             };
             const nextAccess = await resolveAccess(db, req.userId, nextDocument);
             if (!nextAccess.can_view || !nextAccess.can_edit) {
-                return res.status(403).json({ error: 'Sem permissao para mover documento para este contexto.' });
+                return res.status(403).json({ error: 'Sem permissão para mover documento para este contexto.' });
             }
 
             const nextTeamId = Object.prototype.hasOwnProperty.call(req.body, 'team_id')
@@ -368,7 +380,7 @@ module.exports = {
         try {
             const db = await connectDb();
             const document = await getDocumentAccess(db, req.params.id, req.userId);
-            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para arquivar documento.' });
+            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissão para arquivar documento.' });
 
             await db.run('UPDATE documents SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
             await logActivity(db, req.userId, 'archive', 'document', req.params.id);
@@ -383,7 +395,7 @@ module.exports = {
         try {
             const db = await connectDb();
             const document = await getDocumentAccess(db, req.params.id, req.userId);
-            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissao para restaurar documento.' });
+            if (!document || !document.can_edit) return res.status(403).json({ error: 'Sem permissão para restaurar documento.' });
 
             await db.run('UPDATE documents SET archived = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
             await logActivity(db, req.userId, 'restore', 'document', req.params.id);
@@ -403,7 +415,7 @@ module.exports = {
             const db = await connectDb();
             const document = await getDocumentAccess(db, req.params.id, req.userId);
             if (!document || !await canShareDocument(db, req.userId, document)) {
-                return res.status(403).json({ error: 'Sem permissao para compartilhar documento.' });
+                return res.status(403).json({ error: 'Sem permissão para compartilhar documento.' });
             }
 
             const userId = Number(req.body.user_id);
@@ -412,11 +424,11 @@ module.exports = {
                 : 'view';
 
             if (!Number.isInteger(userId) || userId <= 0) {
-                return res.status(400).json({ error: 'Usuario invalido para compartilhamento.' });
+                return res.status(400).json({ error: 'Usuário inválido para compartilhamento.' });
             }
 
             const target = await db.get('SELECT id FROM users WHERE id = ?', [userId]);
-            if (!target) return res.status(404).json({ error: 'Usuario nao encontrado.' });
+            if (!target) return res.status(404).json({ error: 'Usuário não encontrado.' });
 
             await db.run(`
                 INSERT INTO document_permissions (document_id, user_id, permission, role, granted_by)
@@ -436,8 +448,85 @@ module.exports = {
     },
 
     async byProject(req, res) {
-        req.query.project_id = req.params.id;
-        return module.exports.index(req, res);
+        try {
+            const db = await connectDb();
+            const projectId = req.params.id;
+            const project = await getProjectAccess(db, req.userId, projectId);
+            if (!project) {
+                return res.json([]);
+            }
+
+            const status = normalizeStatus(req.query.status);
+            const search = normalizeSearch(req.query.search || req.query.q);
+            const params = [projectId, projectId, status, status, status];
+            let query = `
+                SELECT d.*, t.name as team_name, c.name as client_name, p.title as project_title, i.number as invoice_number,
+                       CASE
+                           WHEN d.team_id IS NULL AND d.user_id = ? THEN 1
+                           WHEN tm.role IN ('owner', 'admin', 'gestor') THEN 1
+                           WHEN COALESCE(dp.permission, dp.role) IN ('edit', 'manage') THEN 1
+                           ELSE 0
+                       END as can_edit
+                FROM documents d
+                LEFT JOIN teams t ON t.id = d.team_id
+                LEFT JOIN clients c ON c.id = d.client_id
+                LEFT JOIN projects p ON p.id = d.project_id
+                LEFT JOIN invoices i ON i.id = d.invoice_id
+                LEFT JOIN team_members tm ON tm.team_id = d.team_id AND tm.user_id = ? AND tm.status = 'active'
+                LEFT JOIN document_permissions dp ON dp.document_id = d.id AND dp.user_id = ?
+                WHERE (
+                    d.project_id = ?
+                    OR (d.project_id IS NULL AND i.project_id = ?)
+                )
+                AND (
+                    (? = 'active' AND d.archived = 0)
+                    OR (? = 'archived' AND d.archived = 1)
+                    OR ? = 'all'
+                )
+            `;
+            params.unshift(req.userId, req.userId, req.userId);
+
+            if (req.query.document_type) {
+                query += ' AND d.document_type = ?';
+                params.push(req.query.document_type);
+            }
+
+            if (req.query.provider) {
+                query += ' AND d.provider = ?';
+                params.push(req.query.provider);
+            }
+
+            if (search) {
+                query += `
+                    AND (
+                        LOWER(d.file_name) LIKE LOWER(?)
+                        OR LOWER(COALESCE(d.description, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(d.file_url, '')) LIKE LOWER(?)
+                        OR LOWER(COALESCE(i.number, '')) LIKE LOWER(?)
+                    )
+                `;
+                const searchParam = `%${search}%`;
+                params.push(searchParam, searchParam, searchParam, searchParam);
+            }
+
+            query += ' ORDER BY d.created_at DESC, d.id DESC';
+
+            const documents = await db.all(query, params);
+            const visibleDocuments = [];
+            for (const document of documents) {
+                if (await canViewDocument(db, req.userId, document)) {
+                    visibleDocuments.push(sanitizeDocumentForRole({
+                        ...document,
+                        can_edit: await canEditDocument(db, req.userId, document)
+                    }));
+                }
+            }
+
+            return res.json(visibleDocuments);
+        } catch (error) {
+            console.error('[DocumentController.byProject]', error);
+            return res.status(500).json({ error: 'Erro ao listar documentos do projeto.' });
+        }
     },
 
     async byClient(req, res) {

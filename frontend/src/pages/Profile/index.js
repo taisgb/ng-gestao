@@ -89,10 +89,10 @@ export default function Profile() {
         <div className="user-details">
           <h1>{user?.name}</h1>
           <div className="badges">
-            <span><MdBusinessCenter /> {user?.role_title || 'Funcao nao informada'}</span>
-            <span><MdLocationOn /> {user?.location || 'Local nao informado'}</span>
+            <span><MdBusinessCenter /> {user?.role_title || 'Função não informada'}</span>
+            <span><MdLocationOn /> {user?.location || 'Local não informado'}</span>
           </div>
-          <p className="bio">{user?.bio || 'Bio profissional nao informada'}</p>
+          <p className="bio">{user?.bio || 'Bio profissional não informada'}</p>
         </div>
         <div className="plan-tag">
           Plano {user?.plan?.toUpperCase()}
@@ -174,7 +174,7 @@ export default function Profile() {
                 onChange={e => setProfileForm({ ...profileForm, email: e.target.value })}
                 required
               />
-              <label>Funcao na equipe</label>
+              <label>Função na equipe</label>
               <input
                 value={profileForm.role_title}
                 onChange={e => setProfileForm({ ...profileForm, role_title: e.target.value })}
@@ -190,7 +190,7 @@ export default function Profile() {
               <input
                 value={profileForm.bio}
                 onChange={e => setProfileForm({ ...profileForm, bio: e.target.value })}
-                placeholder="Ex: Gestao financeira e notas fiscais"
+                placeholder="Ex: Gestão financeira e notas fiscais"
               />
               <label>Nova senha</label>
               <input

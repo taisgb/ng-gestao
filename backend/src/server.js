@@ -51,7 +51,7 @@ const corsOptions = {
             return callback(null, true);
         }
 
-        console.warn(`Origem nao permitida pelo CORS: ${origin}`);
+        console.warn(`Origem não permitida pelo CORS: ${origin}`);
         return callback(null, false);
     },
     credentials: true,

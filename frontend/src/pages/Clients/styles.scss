@@ -191,7 +191,8 @@ $text-light: #8c8c8c;
         font-size: 0.75rem;
       }
 
-      .archived-badge {
+      .archived-badge,
+      .restricted-badge {
         color: #8a4b1a;
         background: #fff4e5;
         border: 1px solid #efd3ac;
@@ -200,6 +201,12 @@ $text-light: #8c8c8c;
         margin-bottom: 14px;
         font-size: 0.75rem;
         font-weight: 700;
+      }
+
+      .restricted-badge {
+        background: #edf2f7;
+        border-color: #d7e2ee;
+        color: #34516f;
       }
 
       .btn-details {
@@ -288,7 +295,9 @@ $text-light: #8c8c8c;
       }
     }
 
-    .archived-alert {
+    .archived-alert,
+    .restricted-alert,
+    .readonly-note {
       background: #fff4e5;
       border: 1px solid #efd3ac;
       color: #8a4b1a;
@@ -297,6 +306,17 @@ $text-light: #8c8c8c;
       margin-bottom: 12px;
       font-size: 0.88rem;
       font-weight: 700;
+    }
+
+    .restricted-alert,
+    .readonly-note {
+      background: #edf2f7;
+      border-color: #d7e2ee;
+      color: #34516f;
+    }
+
+    .readonly-note {
+      margin: 0 0 12px;
     }
 
     .project-filter {
@@ -334,6 +354,11 @@ $text-light: #8c8c8c;
 
         strong { color: $earth-brown; }
         span, small { display: block; color: $text-light; font-size: 0.82rem; }
+
+        .restricted-value {
+          color: #a15b17;
+          font-weight: 700;
+        }
       }
     }
 

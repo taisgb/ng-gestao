@@ -74,7 +74,7 @@ export default function Agenda() {
       <header className="page-header">
         <div>
           <h1>Calendario</h1>
-          <p>Visualizacao das tarefas com prazo definido. Tarefas sem data ficam na tela Tarefas.</p>
+          <p>Visualização das tarefas com prazo definido. Tarefas sem data ficam na tela Tarefas.</p>
         </div>
       </header>
 
@@ -101,7 +101,7 @@ export default function Agenda() {
           {[
             ['all', 'Todos os status'],
             ['open', 'Abertas'],
-            ['done', 'Concluidas']
+            ['done', 'Concluídas']
           ].map(([value, label]) => (
             <button
               key={value}

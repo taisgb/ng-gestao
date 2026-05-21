@@ -12,7 +12,7 @@ const {
     sanitizeTaskForRole
 } = require('../utils/permissions');
 
-const DONE_STATUSES = ['concluido', 'concluído', 'concluÃ­do', 'done'];
+const DONE_STATUSES = ['concluido', 'concluído', 'done'];
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 const TYPES = ['operational', 'financial', 'document', 'invoice', 'service', 'recurring'];
 const SCOPES = ['individual', 'team'];
@@ -43,7 +43,8 @@ function normalizeStatus(status) {
 }
 
 function isDone(status) {
-    return DONE_STATUSES.includes(status) || String(status || '').toLowerCase().startsWith('conclu');
+    const normalized = String(status || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return DONE_STATUSES.includes(status) || normalized.startsWith('conclu');
 }
 
 function toDateOnly(value) {
@@ -192,7 +193,7 @@ async function listTasksForUser(db, userId, query = {}) {
         const project = await getProjectAccess(db, numericUserId, Number(project_id));
 
         if (!project) {
-            const error = new Error('Voce nao tem acesso a este projeto.');
+            const error = new Error('Você não tem acesso a este projeto.');
             error.statusCode = 403;
             throw error;
         }
@@ -306,11 +307,11 @@ module.exports = {
             } = req.body;
 
             if (!isNonEmptyString(title, 160)) {
-                return res.status(400).json({ error: 'Titulo e obrigatorio.' });
+                return res.status(400).json({ error: 'Título é obrigatório.' });
             }
 
             if (due_date && !isDate(due_date)) {
-                return res.status(400).json({ error: 'Data invalida.' });
+                return res.status(400).json({ error: 'Data inválida.' });
             }
 
             const db = await connectDb();
@@ -327,7 +328,7 @@ module.exports = {
                 const project = await getProjectAccess(db, req.userId, project_id);
 
                 if (!project) {
-                    return res.status(403).json({ error: 'Voce nao tem permissao para vincular tarefas a este projeto.' });
+                    return res.status(403).json({ error: 'Você não tem permissão para vincular tarefas a este projeto.' });
                 }
 
                 taskProject = project;
@@ -339,12 +340,12 @@ module.exports = {
                     normalizedType === 'financial' &&
                     !(await canEditProjectFinancials(db, req.userId, project_id))
                 ) {
-                    return res.status(403).json({ error: 'Sem permissao para criar tarefa financeira neste projeto.' });
+                    return res.status(403).json({ error: 'Sem permissão para criar tarefa financeira neste projeto.' });
                 }
             }
 
             if (taskTeamId && !(await canEditTeamResource(db, req.userId, taskTeamId))) {
-                return res.status(403).json({ error: 'Sem permissao para criar tarefa neste time.' });
+                return res.status(403).json({ error: 'Sem permissão para criar tarefa neste time.' });
             }
 
             const assignedTo = assigned_to || req.userId;
@@ -354,7 +355,7 @@ module.exports = {
             });
 
             if (!canAssign) {
-                return res.status(400).json({ error: 'Responsavel invalido para esta tarefa.' });
+                return res.status(400).json({ error: 'Responsável inválido para esta tarefa.' });
             }
 
             const result = await db.run(
@@ -529,7 +530,7 @@ module.exports = {
             const task = await getTask(db, id);
 
             if (!(await canAccessTaskRow(db, task, req.userId, false))) {
-                return res.status(404).json({ error: 'Tarefa nao encontrada ou sem permissao.' });
+                return res.status(404).json({ error: 'Tarefa não encontrada ou sem permissão.' });
             }
 
             const requestedFields = Object.keys(req.body);
@@ -539,7 +540,7 @@ module.exports = {
                 : await canEditTask(db, req.userId, task);
 
             if (!canUpdate) {
-                return res.status(403).json({ error: 'Sem permissao para alterar esta tarefa.' });
+                return res.status(403).json({ error: 'Sem permissão para alterar esta tarefa.' });
             }
 
             const nextType = req.body.task_type !== undefined ? normalizeType(req.body.task_type) : task.task_type;
@@ -561,11 +562,11 @@ module.exports = {
                 const project = await getProjectAccess(db, req.userId, nextProjectId);
 
                 if (!project) {
-                    return res.status(403).json({ error: 'Voce nao tem permissao para vincular tarefas a este projeto.' });
+                    return res.status(403).json({ error: 'Você não tem permissão para vincular tarefas a este projeto.' });
                 }
 
                 if (nextType === 'financial' && !(await canEditProjectFinancials(db, req.userId, nextProjectId))) {
-                    return res.status(403).json({ error: 'Sem permissao para alterar tarefa financeira neste projeto.' });
+                    return res.status(403).json({ error: 'Sem permissão para alterar tarefa financeira neste projeto.' });
                 }
 
                 nextProject = project;
@@ -574,7 +575,7 @@ module.exports = {
                 nextClientId = nextClientId || project.client_id || null;
             } else if (nextTeamId) {
                 if (!(await canEditTeamResource(db, req.userId, nextTeamId))) {
-                    return res.status(403).json({ error: 'Sem permissao para alterar tarefa neste time.' });
+                    return res.status(403).json({ error: 'Sem permissão para alterar tarefa neste time.' });
                 }
                 nextScope = 'team';
             } else {
@@ -592,7 +593,7 @@ module.exports = {
                 });
 
                 if (!canAssign) {
-                    return res.status(400).json({ error: 'Responsavel invalido para esta tarefa.' });
+                    return res.status(400).json({ error: 'Responsável inválido para esta tarefa.' });
                 }
             }
 
@@ -613,7 +614,7 @@ module.exports = {
 
             if (req.body.title !== undefined) {
                 if (!isNonEmptyString(req.body.title, 160)) {
-                    return res.status(400).json({ error: 'Titulo invalido.' });
+                    return res.status(400).json({ error: 'Título inválido.' });
                 }
                 addField('title', req.body.title || null, 'TEXT');
             }
@@ -667,7 +668,7 @@ module.exports = {
             if (req.body.due_date !== undefined) {
                 const dueDate = req.body.due_date || null;
                 if (dueDate && !isDate(dueDate)) {
-                    return res.status(400).json({ error: 'Data invalida.' });
+                    return res.status(400).json({ error: 'Data inválida.' });
                 }
 
                 addField('due_date', dueDate, db.isPostgres ? 'DATE' : null);
@@ -711,7 +712,7 @@ module.exports = {
             const task = await getTask(db, id);
 
             if (!(await canEditTask(db, req.userId, task))) {
-                return res.status(404).json({ error: 'Tarefa nao encontrada ou sem permissao.' });
+                return res.status(404).json({ error: 'Tarefa não encontrada ou sem permissão.' });
             }
 
             await db.run('DELETE FROM tasks WHERE id = ?', [id]);

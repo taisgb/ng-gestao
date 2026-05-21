@@ -44,7 +44,7 @@ module.exports = {
                 (total_debt !== undefined && !isNonNegativeMoney(total_debt)) ||
                 (credit_card_bill !== undefined && !isNonNegativeMoney(credit_card_bill))
             ) {
-                return res.status(400).json({ error: 'Valores financeiros invalidos.' });
+                return res.status(400).json({ error: 'Valores financeiros inválidos.' });
             }
 
             await db.run(`
@@ -73,7 +73,7 @@ module.exports = {
             const { description, installment_value, total_installments, start_date } = req.body;
 
             if (!isNonEmptyString(description, 160) || !isNonNegativeMoney(installment_value) || toMoney(installment_value) === 0 || !isDate(start_date)) {
-                return res.status(400).json({ error: 'Descricao, parcela positiva e data inicial sao obrigatorias.' });
+                return res.status(400).json({ error: 'Descrição, parcela positiva e data inicial são obrigatórias.' });
             }
 
             const db = await connectDb();
@@ -83,10 +83,10 @@ module.exports = {
                 VALUES (?, ?, ?, ?, ?)
             `, [req.userId, description.trim(), toMoney(installment_value), Number(total_installments || 0), start_date]);
 
-            return res.status(201).json({ id: result.lastID, message: 'Renegociacao cadastrada!' });
+            return res.status(201).json({ id: result.lastID, message: 'Renegociação cadastrada!' });
         } catch (error) {
             console.error('[PersonalController.createRenegotiation]', error);
-            return res.status(500).json({ error: 'Erro ao cadastrar renegociacao.' });
+            return res.status(500).json({ error: 'Erro ao cadastrar renegociação.' });
         }
     },
 
