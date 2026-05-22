@@ -106,6 +106,22 @@ const POSTGRES_SCHEMA = `
         project_id INTEGER NOT NULL REFERENCES projects(id),
         user_id INTEGER NOT NULL REFERENCES users(id),
         role TEXT DEFAULT 'collaborator',
+        permission_profile TEXT DEFAULT 'operational',
+        can_edit_project INTEGER DEFAULT 0,
+        can_manage_status INTEGER DEFAULT 0,
+        can_manage_warranty INTEGER DEFAULT 0,
+        can_view_tasks INTEGER DEFAULT 1,
+        can_create_tasks INTEGER DEFAULT 0,
+        can_manage_tasks INTEGER DEFAULT 0,
+        can_view_documents INTEGER DEFAULT 1,
+        can_upload_documents INTEGER DEFAULT 0,
+        can_view_shared_invoices INTEGER DEFAULT 0,
+        can_view_shared_financials INTEGER DEFAULT 0,
+        can_create_revenue INTEGER DEFAULT 0,
+        can_create_expense INTEGER DEFAULT 0,
+        can_manage_financial_entries INTEGER DEFAULT 0,
+        can_view_own_transfer INTEGER DEFAULT 1,
+        can_manage_members INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(project_id, user_id)
@@ -483,6 +499,22 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'projects', 'warranty_start_date', 'DATE');
     await ensurePostgresColumn(db, 'projects', 'warranty_days', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'projects', 'warranty_end_date', 'DATE');
+    await ensurePostgresColumn(db, 'project_members', 'permission_profile', "TEXT DEFAULT 'operational'");
+    await ensurePostgresColumn(db, 'project_members', 'can_edit_project', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_manage_status', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_manage_warranty', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_view_tasks', 'INTEGER DEFAULT 1');
+    await ensurePostgresColumn(db, 'project_members', 'can_create_tasks', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_manage_tasks', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_view_documents', 'INTEGER DEFAULT 1');
+    await ensurePostgresColumn(db, 'project_members', 'can_upload_documents', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_view_shared_invoices', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_view_shared_financials', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_create_revenue', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_create_expense', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_manage_financial_entries', 'INTEGER DEFAULT 0');
+    await ensurePostgresColumn(db, 'project_members', 'can_view_own_transfer', 'INTEGER DEFAULT 1');
+    await ensurePostgresColumn(db, 'project_members', 'can_manage_members', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'project_members', 'updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
     await ensurePostgresColumn(db, 'services', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'services', 'scope', "TEXT DEFAULT 'individual'");
@@ -694,6 +726,22 @@ async function connectDb() {
             project_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             role TEXT DEFAULT 'collaborator',
+            permission_profile TEXT DEFAULT 'operational',
+            can_edit_project INTEGER DEFAULT 0,
+            can_manage_status INTEGER DEFAULT 0,
+            can_manage_warranty INTEGER DEFAULT 0,
+            can_view_tasks INTEGER DEFAULT 1,
+            can_create_tasks INTEGER DEFAULT 0,
+            can_manage_tasks INTEGER DEFAULT 0,
+            can_view_documents INTEGER DEFAULT 1,
+            can_upload_documents INTEGER DEFAULT 0,
+            can_view_shared_invoices INTEGER DEFAULT 0,
+            can_view_shared_financials INTEGER DEFAULT 0,
+            can_create_revenue INTEGER DEFAULT 0,
+            can_create_expense INTEGER DEFAULT 0,
+            can_manage_financial_entries INTEGER DEFAULT 0,
+            can_view_own_transfer INTEGER DEFAULT 1,
+            can_manage_members INTEGER DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(project_id, user_id),
@@ -990,6 +1038,22 @@ async function connectDb() {
     await ensureColumn('projects', 'warranty_start_date', 'DATE');
     await ensureColumn('projects', 'warranty_days', 'INTEGER DEFAULT 0');
     await ensureColumn('projects', 'warranty_end_date', 'DATE');
+    await ensureColumn('project_members', 'permission_profile', "TEXT DEFAULT 'operational'");
+    await ensureColumn('project_members', 'can_edit_project', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_manage_status', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_manage_warranty', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_view_tasks', 'INTEGER DEFAULT 1');
+    await ensureColumn('project_members', 'can_create_tasks', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_manage_tasks', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_view_documents', 'INTEGER DEFAULT 1');
+    await ensureColumn('project_members', 'can_upload_documents', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_view_shared_invoices', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_view_shared_financials', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_create_revenue', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_create_expense', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_manage_financial_entries', 'INTEGER DEFAULT 0');
+    await ensureColumn('project_members', 'can_view_own_transfer', 'INTEGER DEFAULT 1');
+    await ensureColumn('project_members', 'can_manage_members', 'INTEGER DEFAULT 0');
     await ensureColumn('project_members', 'updated_at', 'DATETIME');
     await ensureColumn('services', 'team_id', 'INTEGER');
     await ensureColumn('services', 'scope', "TEXT DEFAULT 'individual'");

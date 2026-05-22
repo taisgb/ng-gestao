@@ -45,6 +45,57 @@ const incomeTypes = ['revenue', 'income', 'scope_increase', 'scope_adjustment', 
 const expenseTypes = ['operational_expense', 'expense', 'operational_cost', 'transfer', 'adjustment_negative'];
 const reimbursementTypes = ['reimbursement'];
 
+const PROJECT_PERMISSION_GROUPS = [
+  {
+    title: 'Projeto',
+    items: [
+      ['can_edit_project', 'Editar dados básicos'],
+      ['can_manage_status', 'Alterar status'],
+      ['can_manage_warranty', 'Gerenciar garantia']
+    ]
+  },
+  {
+    title: 'Tarefas',
+    items: [
+      ['can_view_tasks', 'Visualizar tarefas do projeto'],
+      ['can_create_tasks', 'Criar tarefas'],
+      ['can_manage_tasks', 'Editar e atribuir tarefas']
+    ]
+  },
+  {
+    title: 'Documentos e NFs',
+    items: [
+      ['can_view_documents', 'Visualizar documentos compartilhados'],
+      ['can_upload_documents', 'Adicionar documentos'],
+      ['can_view_shared_invoices', 'Visualizar NFs compartilhadas']
+    ]
+  },
+  {
+    title: 'Financeiro compartilhado',
+    privacyNotice: true,
+    items: [
+      ['can_view_shared_financials', 'Visualizar resumo financeiro compartilhado'],
+      ['can_create_revenue', 'Criar receitas compartilhadas'],
+      ['can_create_expense', 'Criar despesas compartilhadas'],
+      ['can_manage_financial_entries', 'Editar lançamentos compartilhados'],
+      ['can_view_own_transfer', 'Visualizar apenas repasse destinado a si']
+    ]
+  },
+  {
+    title: 'Pessoas',
+    items: [
+      ['can_manage_members', 'Convidar, remover membros e editar permissões']
+    ]
+  }
+];
+
+const PROJECT_PERMISSION_PROFILES = [
+  ['operational', 'Colaborador operacional'],
+  ['manager', 'Gestor do projeto'],
+  ['financial', 'Financeiro do projeto'],
+  ['custom', 'Personalizado']
+];
+
 const PROJECT_STATUS_META = {
   pendente: { label: 'Pendente', className: 'pending' },
   aprovado: { label: 'Aprovado', className: 'approved' },
@@ -167,6 +218,8 @@ export default function ProjectDetails() {
   });
   const [inviteEmail, setInviteEmail] = useState('');
   const [newOwnerId, setNewOwnerId] = useState('');
+  const [permissionsMember, setPermissionsMember] = useState(null);
+  const [permissionDraft, setPermissionDraft] = useState(null);
   const [newStatus, setNewStatus] = useState('');
   const [newNote, setNewNote] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -567,6 +620,39 @@ export default function ProjectDetails() {
     }
   }
 
+  async function openPermissionsModal(member) {
+    try {
+      const response = await api.get(`/projects/${id}/members/${member.id}/permissions`);
+      setPermissionsMember({ ...member, ...response.data });
+      setPermissionDraft({
+        profile: response.data.permission_profile || response.data.permissions?.profile || 'operational',
+        ...(response.data.permissions || {})
+      });
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao carregar permissões do membro.');
+    }
+  }
+
+  async function handleSavePermissions(e) {
+    e.preventDefault();
+    if (!permissionsMember || !permissionDraft) return;
+
+    try {
+      const response = await api.put(`/projects/${id}/members/${permissionsMember.id}/permissions`, permissionDraft);
+      setPermissionsMember(null);
+      setPermissionDraft(null);
+      setMembers(current => current.map(member => (
+        Number(member.id) === Number(permissionsMember.id)
+          ? { ...member, ...response.data.member }
+          : member
+      )));
+      await loadProjectData();
+      setFeedback('Permissões atualizadas.');
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Erro ao atualizar permissões.');
+    }
+  }
+
   if (loading) return <div className="loading">Carregando detalhes...</div>;
   if (!project) return <div className="error">{errorMessage || 'Projeto não encontrado.'}</div>;
 
@@ -582,7 +668,7 @@ export default function ProjectDetails() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
   const canTransferOwner = project.access_role === 'owner';
   const canEditProject = ['owner', 'admin', 'gestor'].includes(project.access_role);
-  const canManageProjectMembers = ['owner', 'admin', 'gestor'].includes(project.access_role);
+  const canManageProjectMembers = ['owner', 'admin'].includes(project.access_role) || Boolean(project.can_manage_members);
   const canViewProjectFinancials = Boolean(project.can_view_financials);
   const canEditAnyFinanceShare = Boolean(finance?.can_edit_total || finance?.shares?.some(share => share.can_edit));
   const projectStatusMeta = getProjectStatusMeta(project.status);
@@ -793,6 +879,66 @@ export default function ProjectDetails() {
             <div className="drawer-actions">
               <button type="button" className="btn-cancel" onClick={() => setIsProjectEditOpen(false)}>Cancelar</button>
               <button type="submit">Salvar alterações</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {permissionsMember && permissionDraft && (
+        <div className="project-edit-overlay">
+          <form className="project-edit-drawer permissions-drawer" onSubmit={handleSavePermissions}>
+            <header>
+              <div>
+                <h2>Permissões do membro</h2>
+                <p>{permissionsMember.name} - {permissionsMember.email}</p>
+              </div>
+              <button type="button" onClick={() => { setPermissionsMember(null); setPermissionDraft(null); }}>x</button>
+            </header>
+
+            {permissionsMember.role === 'owner' ? (
+              <div className="readonly-note">O dono mantém acesso total. Para trocar o dono, use o fluxo de repassar projeto.</div>
+            ) : (
+              <>
+                <label>
+                  Perfil rápido
+                  <select
+                    value={permissionDraft.profile}
+                    onChange={e => setPermissionDraft({ ...permissionDraft, profile: e.target.value })}
+                  >
+                    {PROJECT_PERMISSION_PROFILES.map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="permission-groups">
+                  {PROJECT_PERMISSION_GROUPS.map(group => (
+                    <section key={group.title} className="permission-group">
+                      <h3>{group.title}</h3>
+                      {group.privacyNotice && (
+                        <p className="privacy-warning">
+                          Informações marcadas como privadas continuam visíveis somente para o proprietário ou para pessoas explicitamente autorizadas no próprio lançamento, documento ou nota fiscal.
+                        </p>
+                      )}
+                      {group.items.map(([field, label]) => (
+                        <label key={field} className="toggle-row">
+                          <span>{label}</span>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(permissionDraft[field])}
+                            onChange={e => setPermissionDraft({ ...permissionDraft, profile: 'custom', [field]: e.target.checked })}
+                          />
+                        </label>
+                      ))}
+                    </section>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="drawer-actions">
+              <button type="button" className="btn-cancel" onClick={() => { setPermissionsMember(null); setPermissionDraft(null); }}>Cancelar</button>
+              {permissionsMember.role !== 'owner' && <button type="submit">Salvar permissões</button>}
             </div>
           </form>
         </div>
@@ -1262,7 +1408,7 @@ export default function ProjectDetails() {
         </div>
 
         <div className="panel-section">
-          <h2>Compartilhamento</h2>
+          <h2>Membros do projeto</h2>
           {canManageProjectMembers ? (
             <form onSubmit={handleInvite} className="inline-form">
               <input
@@ -1297,9 +1443,13 @@ export default function ProjectDetails() {
                 <div>
                   <strong>{member.name}</strong>
                   {canManageProjectMembers && <span>{member.email}</span>}
+                  <small>{member.permission_profile_label || (member.role === 'owner' ? 'Dono do projeto' : 'Colaborador operacional')}</small>
                 </div>
                 <div className="member-actions">
                   <span className={`role-badge ${member.role}`}>{member.role === 'owner' ? 'Dono' : 'Colaborador'}</span>
+                  {canManageProjectMembers && (
+                    <button type="button" onClick={() => openPermissionsModal(member)}>Permissões</button>
+                  )}
                   {canManageProjectMembers && member.role !== 'owner' && (
                     <button type="button" onClick={() => handleRemoveProjectMember(member)}>Remover</button>
                   )}

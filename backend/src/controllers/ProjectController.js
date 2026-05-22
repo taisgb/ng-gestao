@@ -9,11 +9,58 @@ const {
     isProjectOwner,
     PROJECT_BILLING_MODES,
     PROJECT_FINANCIAL_VISIBILITIES,
+    PROJECT_PERMISSION_FIELDS,
+    PROJECT_PERMISSION_PROFILES,
+    projectProfileForRole,
+    resolveProjectMemberPermissions,
     sanitizeProjectForRole
 } = require('../utils/permissions');
 const { logActivity } = require('../utils/activityLog');
 
 const DEFAULT_STATUSES = ['pendente', 'aprovado', 'em andamento', 'concluído', 'garantia'];
+const PROJECT_PERMISSION_PROFILE_LABELS = {
+    operational: 'Colaborador operacional',
+    manager: 'Gestor do projeto',
+    financial: 'Financeiro do projeto',
+    custom: 'Personalizado',
+    owner: 'Dono do projeto'
+};
+
+function permissionValue(value) {
+    return value === true || value === 1 || value === '1' ? 1 : 0;
+}
+
+function serializeProjectMember(member) {
+    const permissions = resolveProjectMemberPermissions(member);
+    return {
+        ...member,
+        permission_profile: permissions.profile,
+        permission_profile_label: PROJECT_PERMISSION_PROFILE_LABELS[permissions.profile] || 'Personalizado',
+        permissions
+    };
+}
+
+function applyPermissionPayload(profile, payload = {}, current = {}) {
+    const nextProfile = PROJECT_PERMISSION_PROFILES[profile] ? profile : profile === 'custom' ? 'custom' : 'custom';
+    const base = nextProfile !== 'custom'
+        ? PROJECT_PERMISSION_PROFILES[nextProfile]
+        : resolveProjectMemberPermissions(current);
+    const permissions = {};
+
+    PROJECT_PERMISSION_FIELDS.forEach(field => {
+        permissions[field] = Object.prototype.hasOwnProperty.call(payload, field)
+            ? permissionValue(payload[field])
+            : permissionValue(base[field]);
+    });
+
+    return { profile: nextProfile, permissions };
+}
+
+async function canManageProjectPermissionSettings(db, actorUserId, projectId) {
+    const project = await getProjectAccess(db, projectId, actorUserId);
+    if (!project) return false;
+    return ['owner', 'admin'].includes(project.access_role) || project.can_manage_members === 1;
+}
 
 async function getProjectAccess(db, projectId, userId) {
     return getSharedProjectAccess(db, userId, projectId);
@@ -37,12 +84,26 @@ async function ensureDefaultStatuses(db, projectId) {
 
 async function getProjectMembers(db, projectId) {
     return db.all(`
-        SELECT u.id, u.name, u.email, pm.role, pm.created_at
+        SELECT
+          u.id, u.name, u.email, pm.role, pm.permission_profile,
+          pm.can_edit_project, pm.can_manage_status, pm.can_manage_warranty,
+          pm.can_view_tasks, pm.can_create_tasks, pm.can_manage_tasks,
+          pm.can_view_documents, pm.can_upload_documents, pm.can_view_shared_invoices,
+          pm.can_view_shared_financials, pm.can_create_revenue, pm.can_create_expense,
+          pm.can_manage_financial_entries, pm.can_view_own_transfer, pm.can_manage_members,
+          pm.created_at
         FROM project_members pm
         JOIN users u ON u.id = pm.user_id
         WHERE pm.project_id = ?
         UNION
-        SELECT u.id, u.name, u.email, 'owner' as role, p.archived_at as created_at
+        SELECT
+          u.id, u.name, u.email, 'owner' as role, 'owner' as permission_profile,
+          1 as can_edit_project, 1 as can_manage_status, 1 as can_manage_warranty,
+          1 as can_view_tasks, 1 as can_create_tasks, 1 as can_manage_tasks,
+          1 as can_view_documents, 1 as can_upload_documents, 1 as can_view_shared_invoices,
+          1 as can_view_shared_financials, 1 as can_create_revenue, 1 as can_create_expense,
+          1 as can_manage_financial_entries, 1 as can_view_own_transfer, 1 as can_manage_members,
+          p.archived_at as created_at
         FROM projects p
         JOIN users u ON u.id = p.user_id
         WHERE p.id = ?
@@ -646,8 +707,11 @@ module.exports = {
             }
 
             await db.run(`
-                INSERT OR IGNORE INTO project_members (project_id, user_id, role)
-                VALUES (?, ?, 'collaborator')
+                INSERT OR IGNORE INTO project_members (
+                    project_id, user_id, role, permission_profile,
+                    can_view_tasks, can_view_documents, can_view_own_transfer
+                )
+                VALUES (?, ?, 'collaborator', 'operational', 1, 1, 1)
             `, [id, collaborator.id]);
 
             await db.run(`
@@ -742,10 +806,89 @@ module.exports = {
 
             const members = await getProjectMembers(db, id);
 
-            return res.json(members);
+            return res.json(members.map(serializeProjectMember));
         } catch (error) {
             console.error('[ProjectController.members]', error);
             return res.status(500).json({ error: 'Erro ao listar colaboradores.' });
+        }
+    },
+
+    async memberPermissions(req, res) {
+        try {
+            const { projectId, userId } = req.params;
+            const db = await connectDb();
+
+            const project = await getProjectAccess(db, projectId, req.userId);
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
+
+            const member = Number(project.user_id) === Number(userId)
+                ? {
+                    id: Number(userId),
+                    user_id: Number(userId),
+                    role: 'owner',
+                    permission_profile: 'owner'
+                }
+                : await db.get('SELECT * FROM project_members WHERE project_id = ? AND user_id = ?', [projectId, userId]);
+
+            if (!member) return res.status(404).json({ error: 'Membro não encontrado neste projeto.' });
+
+            return res.json(serializeProjectMember(member));
+        } catch (error) {
+            console.error('[ProjectController.memberPermissions]', error);
+            return res.status(500).json({ error: 'Erro ao buscar permissões do membro.' });
+        }
+    },
+
+    async updateMemberPermissions(req, res) {
+        try {
+            const { projectId, userId } = req.params;
+            const targetUserId = Number(userId);
+            const db = await connectDb();
+
+            if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+                return res.status(400).json({ error: 'Membro inválido.' });
+            }
+
+            if (!await canManageProjectPermissionSettings(db, req.userId, projectId)) {
+                return res.status(403).json({ error: 'Sem permissão para editar permissões deste projeto.' });
+            }
+
+            const project = await db.get('SELECT * FROM projects WHERE id = ?', [projectId]);
+            if (!project) return res.status(404).json({ error: 'Projeto não encontrado.' });
+            if (Number(project.user_id) === targetUserId) {
+                return res.status(403).json({ error: 'Permissões do dono não podem ser reduzidas por esta tela.' });
+            }
+
+            const member = await db.get('SELECT * FROM project_members WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+            if (!member) return res.status(404).json({ error: 'Membro não encontrado neste projeto.' });
+            if (member.role === 'owner') {
+                return res.status(403).json({ error: 'Permissões do dono não podem ser reduzidas por esta tela.' });
+            }
+
+            const { profile, permissions } = applyPermissionPayload(req.body.profile || 'custom', req.body, member);
+            const fields = ['permission_profile = ?', ...PROJECT_PERMISSION_FIELDS.map(field => `${field} = ?`), 'updated_at = CURRENT_TIMESTAMP'];
+            const values = [profile, ...PROJECT_PERMISSION_FIELDS.map(field => permissions[field]), projectId, targetUserId];
+
+            await db.run(`
+                UPDATE project_members
+                SET ${fields.join(', ')}
+                WHERE project_id = ? AND user_id = ?
+            `, values);
+
+            await logActivity(db, req.userId, 'update_project_member_permissions', 'project', projectId, {
+                member_id: targetUserId,
+                profile,
+                permissions
+            });
+
+            const updated = await db.get('SELECT * FROM project_members WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+            return res.json({
+                message: 'Permissões atualizadas.',
+                member: serializeProjectMember(updated)
+            });
+        } catch (error) {
+            console.error('[ProjectController.updateMemberPermissions]', error);
+            return res.status(500).json({ error: 'Erro ao atualizar permissões do membro.' });
         }
     },
 
@@ -764,9 +907,7 @@ module.exports = {
                 return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
             }
 
-            const isTeamEditor = project.scope === 'team' && ['owner', 'admin', 'gestor'].includes(project.access_role);
-            const canRemove = project.access_role === 'owner' || isTeamEditor;
-            if (!canRemove) {
+            if (!await canManageProjectPermissionSettings(db, req.userId, projectId)) {
                 return res.status(403).json({ error: 'Sem permissão para remover membros deste projeto.' });
             }
 

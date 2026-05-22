@@ -1,4 +1,4 @@
-const assert = require('node:assert/strict');
+﻿const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -172,9 +172,65 @@ test('project financial permissions hide global totals from member', async () =>
         assert.equal(await canViewProjectFinancials(db, seeded.ownerId, seeded.projectId), true);
         assert.equal(await canViewProjectFinancials(db, seeded.adminId, seeded.projectId), true);
         assert.equal(await canViewProjectFinancials(db, seeded.gestorId, seeded.projectId), true);
-        assert.equal(await canEditProjectFinancials(db, seeded.gestorId, seeded.projectId), true);
+        assert.equal(await canEditProjectFinancials(db, seeded.gestorId, seeded.projectId), false);
         assert.equal(await canViewProjectFinancials(db, seeded.memberId, seeded.projectId), false);
         assert.equal(await canViewOwnFinancialShare(db, seeded.memberId, seeded.projectId), false);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project member permissions can be configured by owner and keep private finances isolated', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+
+        const updated = await callController(ProjectController.updateMemberPermissions, {
+            userId: seeded.ownerId,
+            params: { projectId: seeded.projectId, userId: seeded.memberId },
+            body: {
+                profile: 'financial',
+                can_manage_financial_entries: false,
+                can_manage_members: false
+            }
+        });
+        assert.equal(updated.statusCode, 200);
+        assert.equal(updated.body.member.permissions.can_view_shared_financials, 1);
+        assert.equal(updated.body.member.permissions.can_manage_financial_entries, 0);
+        assert.equal(await canViewProjectFinancials(db, seeded.memberId, seeded.projectId), true);
+
+        const blocked = await callController(ProjectController.updateMemberPermissions, {
+            userId: seeded.memberId,
+            params: { projectId: seeded.projectId, userId: seeded.adminId },
+            body: { profile: 'manager' }
+        });
+        assert.equal(blocked.statusCode, 403);
+
+        const ownerUpdate = await callController(ProjectController.updateMemberPermissions, {
+            userId: seeded.ownerId,
+            params: { projectId: seeded.projectId, userId: seeded.ownerId },
+            body: { profile: 'operational', can_view_shared_financials: false }
+        });
+        assert.equal(ownerUpdate.statusCode, 403);
+
+        await db.run(`
+            INSERT INTO project_member_financial_entries (
+                project_id, user_id, created_by, financial_type, gross_amount, own_amount,
+                payment_due_date, status, visibility
+            )
+            VALUES (?, ?, ?, 'revenue', 900, 900, '2026-06-15', 'expected', 'private')
+        `, [seeded.projectId, seeded.adminId, seeded.adminId]);
+
+        const memberFinancialView = await callController(ProjectFinancialController.index, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(memberFinancialView.statusCode, 200);
+        assert.equal(memberFinancialView.body.private_entries.some(entry => Number(entry.user_id) === Number(seeded.adminId)), false);
     } finally {
         await cleanup();
     }
@@ -609,7 +665,7 @@ test('client archive and restore are reversible and blocked for team member', as
         assert.equal(blocked.statusCode, 403);
 
         const archived = await callController(ClientController.archive, {
-            userId: seeded.gestorId,
+            userId: seeded.adminId,
             params: { id: seeded.clientId }
         });
         assert.equal(archived.statusCode, 200);
@@ -659,7 +715,7 @@ test('project archive and restore are reversible and blocked for team member', a
         assert.equal(blocked.statusCode, 404);
 
         const archived = await callController(ProjectController.archive, {
-            userId: seeded.gestorId,
+            userId: seeded.adminId,
             params: { id: seeded.projectId }
         });
         assert.equal(archived.statusCode, 200);
@@ -703,7 +759,7 @@ test('project editors can update core fields and warranty dates are calculated',
         assert.equal(blocked.statusCode, 404);
 
         const updated = await callController(ProjectController.update, {
-            userId: seeded.gestorId,
+            userId: seeded.adminId,
             params: { id: seeded.projectId },
             body: {
                 title: 'Site institucional atualizado',

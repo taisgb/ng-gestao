@@ -604,6 +604,14 @@ $line: #ece7df;
         font-size: 0.8rem;
       }
 
+      small {
+        color: #777;
+        display: block;
+        font-size: 0.76rem;
+        font-weight: 720;
+        margin-top: 3px;
+      }
+
       .member-actions {
         align-items: center;
         display: flex;
@@ -615,11 +623,15 @@ $line: #ece7df;
           background: transparent;
           border: 1px solid $line;
           border-radius: 8px;
-          color: #c24141;
+          color: $ink-blue;
           cursor: pointer;
           font-size: 0.78rem;
           font-weight: 700;
           padding: 7px 9px;
+
+          &:last-child {
+            color: #c24141;
+          }
         }
       }
 
@@ -1105,6 +1117,65 @@ $line: #ece7df;
       strong {
         color: var(--text);
         font-size: 1rem;
+      }
+    }
+
+    &.permissions-drawer {
+      max-width: 640px;
+      width: min(100%, 640px);
+    }
+
+    .permission-groups {
+      display: grid;
+      gap: 10px;
+    }
+
+    .permission-group {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+
+      h3 {
+        color: var(--text);
+        font-size: 0.92rem;
+        margin: 0;
+      }
+    }
+
+    .privacy-warning {
+      background: color-mix(in srgb, var(--warning, #f0bd7d) 12%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--warning, #f0bd7d) 22%, var(--border));
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 650;
+      margin: 0;
+      padding: 9px 10px;
+    }
+
+    .toggle-row {
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      display: flex;
+      justify-content: space-between;
+      min-height: 42px;
+      padding: 8px 10px;
+
+      span {
+        color: var(--text);
+        font-size: 0.84rem;
+        font-weight: 720;
+      }
+
+      input {
+        accent-color: var(--primary, #6f8165);
+        min-height: auto;
+        width: auto;
       }
     }
 
@@ -1903,6 +1974,23 @@ body[data-theme='dark'] {
         strong {
           color: #f4f1ea !important;
         }
+      }
+
+      .permission-group,
+      .toggle-row {
+        background: #1d2822 !important;
+        border-color: rgba(255, 255, 255, 0.12) !important;
+      }
+
+      .permission-group h3,
+      .toggle-row span {
+        color: #f4f1ea !important;
+      }
+
+      .privacy-warning {
+        background: rgba(240, 189, 125, 0.12) !important;
+        border-color: rgba(240, 189, 125, 0.24) !important;
+        color: #f0bd7d !important;
       }
 
       header button,

@@ -82,6 +82,8 @@ routes.delete('/projects/:id', ProjectController.destroy);
 routes.post('/projects/:id/share', ProjectController.share);
 routes.patch('/projects/:id/owner', ProjectController.transferOwner);
 routes.get('/projects/:id/members', ProjectController.members);
+routes.get('/projects/:projectId/members/:userId/permissions', ProjectController.memberPermissions);
+routes.put('/projects/:projectId/members/:userId/permissions', ProjectController.updateMemberPermissions);
 routes.delete('/projects/:projectId/members/:memberId', ProjectController.removeMember);
 routes.get('/projects/:id/finance', ProjectController.finance);
 routes.put('/projects/:id/finance', ProjectController.updateFinance);
