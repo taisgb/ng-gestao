@@ -27,7 +27,7 @@ async function getInvoice(db, id) {
 module.exports = {
     async create(req, res) {
         try {
-            const { project_id, number, client_name, description, amount, issue_date, status } = req.body;
+            const { project_id, number, client_name, description, amount, issue_date, status, invoice_visibility = 'shared_with_financial_manager' } = req.body;
 
             if (!isNonEmptyString(client_name, 160) || !isDate(issue_date) || !isNonNegativeMoney(amount)) {
                 return res.status(400).json({ error: 'Cliente, data de emissão e valor válido são obrigatórios.' });
@@ -35,6 +35,10 @@ module.exports = {
 
             if (status && !ALLOWED_STATUSES.includes(status)) {
                 return res.status(400).json({ error: 'Status de nota fiscal inválido.' });
+            }
+
+            if (!['private', 'shared_with_financial_manager', 'shared_with_project'].includes(invoice_visibility)) {
+                return res.status(400).json({ error: 'Visibilidade da nota fiscal inválida.' });
             }
 
             const db = await connectDb();
@@ -47,8 +51,8 @@ module.exports = {
             }
 
             const result = await db.run(`
-                INSERT INTO invoices (user_id, project_id, number, client_name, description, amount, issue_date, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO invoices (user_id, project_id, number, client_name, description, amount, invoice_visibility, issue_date, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 req.userId,
                 project_id || null,
@@ -56,6 +60,7 @@ module.exports = {
                 client_name.trim(),
                 description || null,
                 toMoney(amount),
+                invoice_visibility,
                 issue_date,
                 status || 'pendente'
             ]);
@@ -245,7 +250,7 @@ module.exports = {
     async update(req, res) {
         try {
             const { id } = req.params;
-            const { number, client_name, description, amount, issue_date, status, project_id } = req.body;
+            const { number, client_name, description, amount, issue_date, status, project_id, invoice_visibility } = req.body;
 
             if (client_name !== undefined && !isNonEmptyString(client_name, 160)) {
                 return res.status(400).json({ error: 'Cliente inválido.' });
@@ -261,6 +266,10 @@ module.exports = {
 
             if (status !== undefined && !ALLOWED_STATUSES.includes(status)) {
                 return res.status(400).json({ error: 'Status de nota fiscal inválido.' });
+            }
+
+            if (invoice_visibility !== undefined && !['private', 'shared_with_financial_manager', 'shared_with_project'].includes(invoice_visibility)) {
+                return res.status(400).json({ error: 'Visibilidade da nota fiscal inválida.' });
             }
 
             const db = await connectDb();
@@ -286,6 +295,7 @@ module.exports = {
                     client_name = COALESCE(?, client_name),
                     description = COALESCE(?, description),
                     amount = COALESCE(?, amount),
+                    invoice_visibility = COALESCE(?, invoice_visibility),
                     issue_date = COALESCE(?, issue_date),
                     status = COALESCE(?, status)
                 WHERE id = ?
@@ -295,6 +305,7 @@ module.exports = {
                 client_name === undefined ? null : client_name.trim(),
                 description,
                 amount === undefined ? null : toMoney(amount),
+                invoice_visibility,
                 issue_date,
                 status,
                 id

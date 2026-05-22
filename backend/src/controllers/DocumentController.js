@@ -274,12 +274,15 @@ module.exports = {
 
             const teamId = req.body.team_id || access.inferred_team_id || null;
             const projectId = req.body.project_id || access.inferred_project_id || null;
+            const documentVisibility = ['private', 'shared_with_financial_manager', 'shared_with_project'].includes(req.body.document_visibility)
+                ? req.body.document_visibility
+                : 'shared_with_project';
             const result = await db.run(`
                 INSERT INTO documents (
                     user_id, team_id, client_id, project_id, invoice_id, transaction_id, project_financial_entry_id,
-                    file_name, file_url, provider, document_type, description, mime_type, size, archived, updated_at
+                    file_name, file_url, provider, document_type, document_visibility, description, mime_type, size, archived, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
             `, [
                 req.userId,
                 teamId,
@@ -292,6 +295,7 @@ module.exports = {
                 req.body.file_url.trim(),
                 req.body.provider || 'external',
                 req.body.document_type || 'other',
+                documentVisibility,
                 req.body.description || null,
                 req.body.mime_type || null,
                 req.body.size || null
@@ -340,6 +344,7 @@ module.exports = {
                     file_url = COALESCE(?, file_url),
                     provider = COALESCE(?, provider),
                     document_type = COALESCE(?, document_type),
+                    document_visibility = COALESCE(?, document_visibility),
                     description = COALESCE(?, description),
                     team_id = ?,
                     client_id = ?,
@@ -356,6 +361,7 @@ module.exports = {
                 req.body.file_url === undefined ? null : req.body.file_url.trim(),
                 req.body.provider,
                 req.body.document_type,
+                req.body.document_visibility,
                 req.body.description,
                 nextTeamId,
                 nextDocument.client_id || null,

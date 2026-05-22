@@ -91,6 +91,8 @@ const POSTGRES_SCHEMA = `
         payment_type TEXT,
         payment_status TEXT DEFAULT 'pendente',
         amount_paid DOUBLE PRECISION DEFAULT 0,
+        billing_mode TEXT DEFAULT 'centralized',
+        financial_visibility TEXT DEFAULT 'shared_authorized',
         deadline DATE,
         warranty_start_date DATE,
         warranty_days INTEGER DEFAULT 0,
@@ -133,6 +135,27 @@ const POSTGRES_SCHEMA = `
         amount DOUBLE PRECISION DEFAULT 0,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(project_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS project_member_financial_entries (
+        id SERIAL PRIMARY KEY,
+        project_id INTEGER NOT NULL REFERENCES projects(id),
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        created_by INTEGER NOT NULL REFERENCES users(id),
+        personal_transaction_id INTEGER,
+        financial_type TEXT,
+        gross_amount DOUBLE PRECISION DEFAULT 0,
+        own_amount DOUBLE PRECISION,
+        transfer_amount DOUBLE PRECISION,
+        payment_due_date DATE,
+        paid_at DATE,
+        status TEXT DEFAULT 'expected',
+        visibility TEXT DEFAULT 'private',
+        shared_with_project_owner INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(personal_transaction_id)
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -182,6 +205,7 @@ const POSTGRES_SCHEMA = `
         client_name TEXT NOT NULL,
         description TEXT,
         amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+        invoice_visibility TEXT DEFAULT 'shared_with_financial_manager',
         issue_date DATE NOT NULL,
         status TEXT DEFAULT 'pendente',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -278,6 +302,8 @@ const POSTGRES_SCHEMA = `
         payment_method TEXT,
         source TEXT DEFAULT 'manual',
         origin_label TEXT,
+        visibility TEXT DEFAULT 'private',
+        shared_with_project_owner INTEGER DEFAULT 0,
         financial_type TEXT,
         financial_scope TEXT DEFAULT 'personal',
         recurrence_frequency TEXT,
@@ -305,6 +331,7 @@ const POSTGRES_SCHEMA = `
         file_url TEXT NOT NULL,
         provider TEXT DEFAULT 'external',
         document_type TEXT DEFAULT 'other',
+        document_visibility TEXT DEFAULT 'shared_with_project',
         description TEXT,
         mime_type TEXT,
         size INTEGER,
@@ -450,6 +477,8 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'clients', 'scope', "TEXT DEFAULT 'individual'");
     await ensurePostgresColumn(db, 'projects', 'team_id', 'INTEGER REFERENCES teams(id)');
     await ensurePostgresColumn(db, 'projects', 'scope', "TEXT DEFAULT 'individual'");
+    await ensurePostgresColumn(db, 'projects', 'billing_mode', "TEXT DEFAULT 'centralized'");
+    await ensurePostgresColumn(db, 'projects', 'financial_visibility', "TEXT DEFAULT 'shared_authorized'");
     await ensurePostgresColumn(db, 'projects', 'archived_at', 'TIMESTAMP');
     await ensurePostgresColumn(db, 'projects', 'warranty_start_date', 'DATE');
     await ensurePostgresColumn(db, 'projects', 'warranty_days', 'INTEGER DEFAULT 0');
@@ -484,6 +513,8 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'personal_transactions', 'transfer_amount', 'DOUBLE PRECISION');
     await ensurePostgresColumn(db, 'personal_transactions', 'payment_due_date', 'DATE');
     await ensurePostgresColumn(db, 'personal_transactions', 'paid_at', 'DATE');
+    await ensurePostgresColumn(db, 'personal_transactions', 'visibility', "TEXT DEFAULT 'private'");
+    await ensurePostgresColumn(db, 'personal_transactions', 'shared_with_project_owner', 'INTEGER DEFAULT 0');
     await ensurePostgresColumn(db, 'personal_transactions', 'financial_type', 'TEXT');
     await ensurePostgresColumn(db, 'personal_transactions', 'financial_scope', "TEXT DEFAULT 'personal'");
     await ensurePostgresColumn(db, 'personal_transactions', 'recurrence_frequency', 'TEXT');
@@ -495,6 +526,8 @@ async function connectPostgresDb() {
     await ensurePostgresColumn(db, 'documents', 'invoice_id', 'INTEGER REFERENCES invoices(id)');
     await ensurePostgresColumn(db, 'documents', 'transaction_id', 'INTEGER REFERENCES transactions(id)');
     await ensurePostgresColumn(db, 'documents', 'project_financial_entry_id', 'INTEGER REFERENCES project_financial_entries(id)');
+    await ensurePostgresColumn(db, 'documents', 'document_visibility', "TEXT DEFAULT 'shared_with_project'");
+    await ensurePostgresColumn(db, 'invoices', 'invoice_visibility', "TEXT DEFAULT 'shared_with_financial_manager'");
     await ensurePostgresColumn(db, 'project_financial_entries', 'financial_type', 'TEXT');
     await ensurePostgresColumn(db, 'project_financial_entries', 'gross_amount', 'DOUBLE PRECISION');
     await ensurePostgresColumn(db, 'project_financial_entries', 'own_amount', 'DOUBLE PRECISION');
@@ -579,6 +612,8 @@ async function connectDb() {
             payment_type TEXT, 
             payment_status TEXT DEFAULT 'pendente', 
             amount_paid REAL DEFAULT 0, 
+            billing_mode TEXT DEFAULT 'centralized',
+            financial_visibility TEXT DEFAULT 'shared_authorized',
             deadline DATE,
             warranty_start_date DATE,
             warranty_days INTEGER DEFAULT 0,
@@ -700,6 +735,31 @@ async function connectDb() {
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
 
+        CREATE TABLE IF NOT EXISTS project_member_financial_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_by INTEGER NOT NULL,
+            personal_transaction_id INTEGER,
+            financial_type TEXT,
+            gross_amount REAL DEFAULT 0,
+            own_amount REAL,
+            transfer_amount REAL,
+            payment_due_date DATE,
+            paid_at DATE,
+            status TEXT DEFAULT 'expected',
+            visibility TEXT DEFAULT 'private',
+            shared_with_project_owner INTEGER DEFAULT 0,
+            archived INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(personal_transaction_id),
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (personal_transaction_id) REFERENCES personal_transactions(id)
+        );
+
         -- 12. Serviços personalizados por usuário
         CREATE TABLE IF NOT EXISTS services (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -732,6 +792,7 @@ async function connectDb() {
             client_name TEXT NOT NULL,
             description TEXT,
             amount REAL NOT NULL DEFAULT 0,
+            invoice_visibility TEXT DEFAULT 'shared_with_financial_manager',
             issue_date DATE NOT NULL,
             status TEXT DEFAULT 'pendente',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -845,6 +906,8 @@ async function connectDb() {
             payment_method TEXT,
             source TEXT DEFAULT 'manual',
             origin_label TEXT,
+            visibility TEXT DEFAULT 'private',
+            shared_with_project_owner INTEGER DEFAULT 0,
             financial_type TEXT,
             financial_scope TEXT DEFAULT 'personal',
             recurrence_frequency TEXT,
@@ -878,6 +941,7 @@ async function connectDb() {
             file_url TEXT NOT NULL,
             provider TEXT DEFAULT 'external',
             document_type TEXT DEFAULT 'other',
+            document_visibility TEXT DEFAULT 'shared_with_project',
             description TEXT,
             mime_type TEXT,
             size INTEGER,
@@ -920,6 +984,8 @@ async function connectDb() {
     await ensureColumn('clients', 'archived', 'INTEGER DEFAULT 0');
     await ensureColumn('projects', 'team_id', 'INTEGER');
     await ensureColumn('projects', 'scope', "TEXT DEFAULT 'individual'");
+    await ensureColumn('projects', 'billing_mode', "TEXT DEFAULT 'centralized'");
+    await ensureColumn('projects', 'financial_visibility', "TEXT DEFAULT 'shared_authorized'");
     await ensureColumn('projects', 'archived_at', 'DATETIME');
     await ensureColumn('projects', 'warranty_start_date', 'DATE');
     await ensureColumn('projects', 'warranty_days', 'INTEGER DEFAULT 0');
@@ -954,6 +1020,8 @@ async function connectDb() {
     await ensureColumn('personal_transactions', 'transfer_amount', 'REAL');
     await ensureColumn('personal_transactions', 'payment_due_date', 'DATE');
     await ensureColumn('personal_transactions', 'paid_at', 'DATE');
+    await ensureColumn('personal_transactions', 'visibility', "TEXT DEFAULT 'private'");
+    await ensureColumn('personal_transactions', 'shared_with_project_owner', 'INTEGER DEFAULT 0');
     await ensureColumn('personal_transactions', 'financial_type', 'TEXT');
     await ensureColumn('personal_transactions', 'financial_scope', "TEXT DEFAULT 'personal'");
     await ensureColumn('personal_transactions', 'recurrence_frequency', 'TEXT');
@@ -966,6 +1034,7 @@ async function connectDb() {
     await ensureColumn('documents', 'invoice_id', 'INTEGER');
     await ensureColumn('documents', 'transaction_id', 'INTEGER');
     await ensureColumn('documents', 'project_financial_entry_id', 'INTEGER');
+    await ensureColumn('documents', 'document_visibility', "TEXT DEFAULT 'shared_with_project'");
     await ensureColumn('documents', 'mime_type', 'TEXT');
     await ensureColumn('documents', 'size', 'INTEGER');
     await ensureColumn('documents', 'archived', 'INTEGER DEFAULT 0');
@@ -978,6 +1047,7 @@ async function connectDb() {
     await ensureColumn('project_financial_entries', 'paid_at', 'DATE');
     await ensureColumn('project_financial_entries', 'billable_to_client', 'INTEGER DEFAULT 0');
     await ensureColumn('project_financial_entries', 'affects_personal_finance', 'INTEGER DEFAULT 0');
+    await ensureColumn('invoices', 'invoice_visibility', "TEXT DEFAULT 'shared_with_financial_manager'");
     await ensureColumn('users', 'role', "TEXT DEFAULT 'member'");
     await ensureColumn('users', 'is_super_admin', 'INTEGER DEFAULT 0');
 
@@ -996,6 +1066,31 @@ async function connectDb() {
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (team_id) REFERENCES teams(id),
             FOREIGN KEY (granted_by) REFERENCES users(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS project_member_financial_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_by INTEGER NOT NULL,
+            personal_transaction_id INTEGER,
+            financial_type TEXT,
+            gross_amount REAL DEFAULT 0,
+            own_amount REAL,
+            transfer_amount REAL,
+            payment_due_date DATE,
+            paid_at DATE,
+            status TEXT DEFAULT 'expected',
+            visibility TEXT DEFAULT 'private',
+            shared_with_project_owner INTEGER DEFAULT 0,
+            archived INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(personal_transaction_id),
+            FOREIGN KEY (project_id) REFERENCES projects(id),
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (personal_transaction_id) REFERENCES personal_transactions(id)
         );
 
         CREATE TABLE IF NOT EXISTS activity_logs (

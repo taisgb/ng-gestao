@@ -73,6 +73,10 @@ function getEntryStatusLabel(status) {
   return ENTRY_STATUSES.find(item => item.value === status)?.label || status || 'Pendente';
 }
 
+function getEntryTypeValue(entry) {
+  return entry?.financial_type || entry?.type;
+}
+
 function getDocumentTypeLabel(type) {
   return DOCUMENT_TYPES.find(([value]) => value === type)?.[1] || 'Outro';
 }
@@ -118,6 +122,9 @@ export default function ProjectDetails() {
   const [projectFinanceSummary, setProjectFinanceSummary] = useState(null);
   const [projectEntries, setProjectEntries] = useState([]);
   const [entryTab, setEntryTab] = useState('all');
+  const [entrySearch, setEntrySearch] = useState('');
+  const [showDetailedFinanceKpis, setShowDetailedFinanceKpis] = useState(false);
+  const [showAdvancedEntryOptions, setShowAdvancedEntryOptions] = useState(false);
   const [canEditProjectEntries, setCanEditProjectEntries] = useState(false);
   const [entryForm, setEntryForm] = useState(emptyEntryForm());
   const [editingEntry, setEditingEntry] = useState(null);
@@ -138,7 +145,9 @@ export default function ProjectDetails() {
     warranty_start_date: '',
     warranty_days: '',
     scope: 'individual',
-    team_id: ''
+    team_id: '',
+    billing_mode: 'centralized',
+    financial_visibility: 'shared_authorized'
   });
   const [documentForm, setDocumentForm] = useState({
     file_name: '',
@@ -311,7 +320,9 @@ export default function ProjectDetails() {
       warranty_start_date: project.warranty_start_date || '',
       warranty_days: project.warranty_days ?? '',
       scope: project.scope || 'individual',
-      team_id: project.team_id || ''
+      team_id: project.team_id || '',
+      billing_mode: project.billing_mode || 'centralized',
+      financial_visibility: project.financial_visibility || 'shared_authorized'
     });
     setIsProjectEditOpen(true);
   }
@@ -361,6 +372,7 @@ export default function ProjectDetails() {
   function resetEntryForm() {
     setEntryForm(emptyEntryForm());
     setEditingEntry(null);
+    setShowAdvancedEntryOptions(false);
   }
 
   function entryPayload() {
@@ -402,6 +414,7 @@ export default function ProjectDetails() {
       document_file_url: '',
       document_type: 'receipt'
     });
+    setShowAdvancedEntryOptions(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -563,36 +576,66 @@ export default function ProjectDetails() {
   const canEditAnyFinanceShare = Boolean(finance?.can_edit_total || finance?.shares?.some(share => share.can_edit));
   const projectStatusMeta = getProjectStatusMeta(project.status);
   const transferCandidates = members.filter(member => member.role !== 'owner');
-  const financeKpis = [
-    ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
-    ['Receitas adicionais', projectFinanceSummary?.additional_income],
-    ['Custos reembolsáveis cobrados', projectFinanceSummary?.billable_reimbursable_costs],
+  const mainFinanceKpis = [
     ['Valor atualizado', projectFinanceSummary?.updated_value ?? projectFinanceSummary?.updated_total_value],
     ['Recebido do cliente', projectFinanceSummary?.received_client ?? projectFinanceSummary?.received ?? projectFinanceSummary?.total_received],
     ['Pendente do cliente', projectFinanceSummary?.pending_client ?? projectFinanceSummary?.pending ?? projectFinanceSummary?.total_pending],
+    ['Minha parte', projectFinanceSummary?.own_amount ?? projectFinanceSummary?.my_share],
+    ['Saldo líquido previsto', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance]
+  ];
+  const detailedFinanceKpis = [
+    ['Contrato', projectFinanceSummary?.contract_value ?? projectFinanceSummary?.base_contract_value ?? project.base_value],
+    ['Receitas adicionais', projectFinanceSummary?.additional_income],
+    ['Custos reembolsáveis cobrados', projectFinanceSummary?.billable_reimbursable_costs],
     ['Despesas operacionais', projectFinanceSummary?.operational_expenses ?? projectFinanceSummary?.expenses ?? projectFinanceSummary?.total_expenses],
     ['Repasses', projectFinanceSummary?.transfers_total],
     ['Pendente de repasse', projectFinanceSummary?.pending_transfer],
     ['A reembolsar', projectFinanceSummary?.reimbursable_expenses],
-    ['Saldo líquido previsto', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance],
-    ['Caixa atual', projectFinanceSummary?.cash_current ?? projectFinanceSummary?.current_cash],
-    ['Minha parte', projectFinanceSummary?.own_amount ?? projectFinanceSummary?.my_share]
+    ['Caixa atual', projectFinanceSummary?.cash_current ?? projectFinanceSummary?.current_cash]
   ];
   const entryTabCounts = {
     all: projectEntries.length,
-    income: projectEntries.filter(entry => incomeTypes.includes(entry.type)).length,
-    expense: projectEntries.filter(entry => expenseTypes.includes(entry.type)).length,
-    reimbursement: projectEntries.filter(entry => reimbursementTypes.includes(entry.type)).length,
+    income: projectEntries.filter(entry => incomeTypes.includes(getEntryTypeValue(entry))).length,
+    expense: projectEntries.filter(entry => expenseTypes.includes(getEntryTypeValue(entry))).length,
+    reimbursement: projectEntries.filter(entry => reimbursementTypes.includes(getEntryTypeValue(entry))).length,
     archived: projectEntries.filter(entry => entry.archived === 1).length
   };
+  const normalizedEntrySearch = entrySearch.trim().toLowerCase();
   const visibleProjectEntries = projectEntries.filter(entry => {
-    if (entryTab === 'all') return entry.archived !== 1;
-    if (entryTab === 'archived') return entry.archived === 1;
-    if (entryTab === 'income') return entry.archived !== 1 && incomeTypes.includes(entry.type);
-    if (entryTab === 'expense') return entry.archived !== 1 && expenseTypes.includes(entry.type);
-    if (entryTab === 'reimbursement') return entry.archived !== 1 && reimbursementTypes.includes(entry.type);
-    return true;
+    const entryType = getEntryTypeValue(entry);
+    const matchesTab =
+      (entryTab === 'all' && entry.archived !== 1)
+      || (entryTab === 'archived' && entry.archived === 1)
+      || (entryTab === 'income' && entry.archived !== 1 && incomeTypes.includes(entryType))
+      || (entryTab === 'expense' && entry.archived !== 1 && expenseTypes.includes(entryType))
+      || (entryTab === 'reimbursement' && entry.archived !== 1 && reimbursementTypes.includes(entryType));
+
+    if (!matchesTab) return false;
+    if (!normalizedEntrySearch) return true;
+
+    return [
+      entry.description,
+      entry.category,
+      entry.created_by_name,
+      ENTRY_TYPES.find(type => type.value === entryType)?.label,
+      getEntryStatusLabel(entry.status)
+    ].some(value => String(value || '').toLowerCase().includes(normalizedEntrySearch));
   });
+  const selectedEntryType = entryForm.type;
+  const isRevenueEntry = ['revenue', 'scope_increase', 'adjustment_positive'].includes(selectedEntryType);
+  const isOperationalExpenseEntry = ['operational_expense', 'adjustment_negative'].includes(selectedEntryType);
+  const isTransferEntry = selectedEntryType === 'transfer';
+  const isReimbursementEntry = selectedEntryType === 'reimbursement';
+  const isPaymentReceivedEntry = selectedEntryType === 'payment_received';
+  const entryAmountLabel = isRevenueEntry
+    ? 'Valor bruto'
+    : isTransferEntry
+      ? 'Valor do repasse'
+      : isReimbursementEntry
+        ? 'Valor do reembolso'
+        : isPaymentReceivedEntry
+          ? 'Valor recebido'
+          : 'Valor';
 
   return (
     <div className="project-details-container">
@@ -604,6 +647,18 @@ export default function ProjectDetails() {
             Tipo: <strong>{project.scope === 'team' ? 'Projeto de equipe' : 'Projeto individual'}</strong>
             {project.team_name ? <> - Time: <strong>{project.team_name}</strong></> : null}
           </p>
+          <p>
+            Financeiro: <strong>{
+              project.billing_mode === 'split_private'
+                ? 'Recebimentos individuais privados'
+                : project.billing_mode === 'shared'
+                  ? 'Financeiro compartilhado'
+                  : 'Cobrança centralizada com repasses'
+            }</strong>
+          </p>
+          {!project.can_view_financials && (
+            <p className="financial-privacy-note">{project.financial_notice || 'As informações financeiras deste projeto são privadas.'}</p>
+          )}
         </div>
         <div className="header-actions">
           <div className={`project-badge ${projectStatusMeta.className}`}>{projectStatusMeta.label}</div>
@@ -683,6 +738,22 @@ export default function ProjectDetails() {
                 </select>
               </label>
             )}
+            <label>
+              Como os valores serão gerenciados?
+              <select value={projectForm.billing_mode} onChange={e => setProjectForm({ ...projectForm, billing_mode: e.target.value })} disabled={!project.can_edit_financials}>
+                <option value="centralized">Cobrança centralizada com repasses</option>
+                <option value="split_private">Recebimentos individuais privados</option>
+                <option value="shared">Financeiro compartilhado</option>
+              </select>
+            </label>
+            <label>
+              Quem pode visualizar valores?
+              <select value={projectForm.financial_visibility} onChange={e => setProjectForm({ ...projectForm, financial_visibility: e.target.value })} disabled={!project.can_edit_financials}>
+                <option value="private_owner">Apenas eu / dono financeiro</option>
+                <option value="shared_authorized">Pessoas com permissão financeira</option>
+                <option value="shared_project">Todos os participantes autorizados</option>
+              </select>
+            </label>
             <div className="edit-grid">
               <label>
                 Inicio da garantia
@@ -782,22 +853,39 @@ export default function ProjectDetails() {
       )}
 
       <section className="project-financial-entries">
-        <div className="split-header">
+        <div className="finance-section-header">
           <div>
+            <span className="section-eyebrow">Financeiro do projeto</span>
             <h2>Receitas e Despesas do Projeto</h2>
+            <p>Acompanhe valor atualizado, recebimentos, pendências e lançamentos sem misturar tudo na mesma visão.</p>
             {!project.can_view_financials && <p>Você visualiza apenas sua própria parte financeira neste projeto.</p>}
           </div>
         </div>
 
         {canViewProjectFinancials && projectFinanceSummary && (
-          <div className="entry-summary-grid">
-            {financeKpis.map(([label, value]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <strong>{formatCurrency(value)}</strong>
+          <>
+            <div className="entry-summary-grid compact">
+              {mainFinanceKpis.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{formatCurrency(value)}</strong>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="details-toggle" onClick={() => setShowDetailedFinanceKpis(current => !current)}>
+              {showDetailedFinanceKpis ? 'Ocultar indicadores detalhados' : 'Ver indicadores detalhados'}
+            </button>
+            {showDetailedFinanceKpis && (
+              <div className="entry-summary-grid detailed">
+                {detailedFinanceKpis.map(([label, value]) => (
+                  <div key={label}>
+                    <span>{label}</span>
+                    <strong>{formatCurrency(value)}</strong>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
 
         {!canViewProjectFinancials && (
@@ -805,118 +893,250 @@ export default function ProjectDetails() {
         )}
 
         {canEditProjectEntries && (
-          <form onSubmit={handleSaveEntry} className={`entry-form ${editingEntry ? 'editing' : ''}`}>
-            {editingEntry && <div className="editing-banner">Editando lançamento #{editingEntry.id}</div>}
-            <select value={entryForm.type} onChange={e => setEntryForm({ ...entryForm, type: e.target.value })}>
-              {ENTRY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-            </select>
-            <input value={entryForm.description} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} placeholder="Descrição" required />
-            <input value={entryForm.category} onChange={e => setEntryForm({ ...entryForm, category: e.target.value })} placeholder="Categoria" required />
-            <input type="number" step="0.01" value={entryForm.gross_amount || entryForm.amount} onChange={e => setEntryForm({ ...entryForm, gross_amount: e.target.value, amount: e.target.value })} placeholder="Valor bruto" required />
-            <input type="number" step="0.01" value={entryForm.own_amount} onChange={e => setEntryForm({ ...entryForm, own_amount: e.target.value })} placeholder="Minha parte" />
-            <input type="number" step="0.01" value={entryForm.transfer_amount} onChange={e => setEntryForm({ ...entryForm, transfer_amount: e.target.value })} placeholder="Repasse" />
-            <input type="date" value={entryForm.date} onChange={e => setEntryForm({ ...entryForm, date: e.target.value })} required />
-            <input type="date" value={entryForm.payment_due_date} onChange={e => setEntryForm({ ...entryForm, payment_due_date: e.target.value })} title="Data prevista de pagamento" />
-            <input type="date" value={entryForm.paid_at} onChange={e => setEntryForm({ ...entryForm, paid_at: e.target.value })} title="Data real de pagamento" />
-            <select value={entryForm.status} onChange={e => setEntryForm({ ...entryForm, status: e.target.value })}>
-              {ENTRY_STATUSES.map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
-            </select>
-            <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Forma de pagamento" />
-            <label><input type="checkbox" checked={entryForm.affects_project_total} onChange={e => setEntryForm({ ...entryForm, affects_project_total: e.target.checked })} /> Soma no projeto</label>
-            <label><input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked, billable_to_client: e.target.checked ? true : entryForm.billable_to_client, affects_project_total: e.target.checked ? true : entryForm.affects_project_total })} /> Reembolsável</label>
-            <label><input type="checkbox" checked={entryForm.billable_to_client} onChange={e => setEntryForm({ ...entryForm, billable_to_client: e.target.checked })} /> Cobrar do cliente</label>
-            <label><input type="checkbox" checked={entryForm.affects_my_financial} onChange={e => setEntryForm({ ...entryForm, affects_my_financial: e.target.checked })} /> Meu financeiro</label>
-            <p className="entry-help">Custos reembolsáveis podem ser cobrados do cliente e somam ao valor atualizado quando "Soma no projeto" estiver marcado.</p>
-            <textarea value={entryForm.notes} onChange={e => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="Observações" />
-            <input value={entryForm.document_file_name} onChange={e => setEntryForm({ ...entryForm, document_file_name: e.target.value })} placeholder="Nome do comprovante" />
-            <input value={entryForm.document_file_url} onChange={e => setEntryForm({ ...entryForm, document_file_url: e.target.value })} placeholder="Link do comprovante" />
-            <select value={entryForm.document_type} onChange={e => setEntryForm({ ...entryForm, document_type: e.target.value })}>
-              <option value="receipt">Comprovante</option>
-              <option value="invoice">Nota fiscal</option>
-              <option value="boleto">Boleto</option>
-              <option value="other">Outro</option>
-            </select>
-            <button type="submit">{editingEntry ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
-            {editingEntry && <button type="button" className="btn-cancel" onClick={resetEntryForm}>Cancelar edição</button>}
+          <form onSubmit={handleSaveEntry} className={`entry-form quick-entry-form ${editingEntry ? 'editing' : ''}`}>
+            <div className="quick-form-header">
+              <div>
+                <span className="section-eyebrow">Novo lançamento</span>
+                <h3>{editingEntry ? `Editando lançamento #${editingEntry.id}` : 'Lançamento rápido'}</h3>
+                <p>Preencha o essencial agora e abra as opções avançadas só quando precisar.</p>
+              </div>
+              {editingEntry && <button type="button" className="btn-cancel" onClick={resetEntryForm}>Cancelar edição</button>}
+            </div>
+
+            <div className="entry-form-grid essential-fields">
+              <label>
+                Tipo de lançamento
+                <select value={entryForm.type} onChange={e => setEntryForm({ ...entryForm, type: e.target.value })}>
+                  {ENTRY_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Descrição
+                <input value={entryForm.description} onChange={e => setEntryForm({ ...entryForm, description: e.target.value })} placeholder="Ex: etapa 1, hospedagem, repasse" required />
+              </label>
+              <label>
+                Categoria
+                <input value={entryForm.category} onChange={e => setEntryForm({ ...entryForm, category: e.target.value })} placeholder="Ex: contrato, ferramenta, pagamento" required />
+              </label>
+              <label>
+                {entryAmountLabel}
+                <input type="number" step="0.01" value={entryForm.gross_amount || entryForm.amount} onChange={e => setEntryForm({ ...entryForm, gross_amount: e.target.value, amount: e.target.value })} placeholder="0,00" required />
+              </label>
+              <label>
+                {isPaymentReceivedEntry ? 'Data do recebimento' : 'Data prevista'}
+                <input
+                  type="date"
+                  value={isPaymentReceivedEntry ? (entryForm.paid_at || entryForm.date) : (entryForm.payment_due_date || entryForm.date)}
+                  onChange={e => {
+                    if (isPaymentReceivedEntry) {
+                      setEntryForm({ ...entryForm, paid_at: e.target.value, date: e.target.value });
+                    } else {
+                      setEntryForm({ ...entryForm, payment_due_date: e.target.value, date: e.target.value });
+                    }
+                  }}
+                  required
+                />
+              </label>
+              <label>
+                Status
+                <select value={entryForm.status} onChange={e => setEntryForm({ ...entryForm, status: e.target.value })}>
+                  {ENTRY_STATUSES.filter(status => status.value !== 'archived').map(status => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <button type="button" className="advanced-toggle" onClick={() => setShowAdvancedEntryOptions(current => !current)}>
+              {showAdvancedEntryOptions ? 'Ocultar opções avançadas' : 'Mais opções'}
+            </button>
+
+            {showAdvancedEntryOptions && (
+              <div className="entry-form-grid advanced-fields">
+                {isRevenueEntry && (
+                  <>
+                    <label>
+                      Minha parte
+                      <input type="number" step="0.01" value={entryForm.own_amount} onChange={e => setEntryForm({ ...entryForm, own_amount: e.target.value })} placeholder="0,00" />
+                    </label>
+                    <label>
+                      Repasse previsto
+                      <input type="number" step="0.01" value={entryForm.transfer_amount} onChange={e => setEntryForm({ ...entryForm, transfer_amount: e.target.value })} placeholder="0,00" />
+                    </label>
+                  </>
+                )}
+                {isOperationalExpenseEntry && (
+                  <>
+                    <label>
+                      Forma de pagamento
+                      <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Cartão, Pix, boleto..." />
+                    </label>
+                    <label>
+                      Data de competência
+                      <input type="date" value={entryForm.date} onChange={e => setEntryForm({ ...entryForm, date: e.target.value })} />
+                    </label>
+                  </>
+                )}
+                {(isTransferEntry || isReimbursementEntry) && (
+                  <label>
+                    Referência/origem
+                    <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Pessoa, NF ou custo relacionado" />
+                  </label>
+                )}
+                {isPaymentReceivedEntry && (
+                  <label>
+                    Forma de pagamento
+                    <input value={entryForm.payment_method} onChange={e => setEntryForm({ ...entryForm, payment_method: e.target.value })} placeholder="Pix, transferência, cartão..." />
+                  </label>
+                )}
+                <label>
+                  Data real de pagamento
+                  <input type="date" value={entryForm.paid_at} onChange={e => setEntryForm({ ...entryForm, paid_at: e.target.value })} />
+                </label>
+                <label className="checkbox-card">
+                  <input type="checkbox" checked={entryForm.affects_project_total} onChange={e => setEntryForm({ ...entryForm, affects_project_total: e.target.checked })} />
+                  Soma no projeto
+                </label>
+                {isOperationalExpenseEntry && (
+                  <>
+                    <label className="checkbox-card">
+                      <input type="checkbox" checked={entryForm.reimbursable} onChange={e => setEntryForm({ ...entryForm, reimbursable: e.target.checked, billable_to_client: e.target.checked ? true : entryForm.billable_to_client, affects_project_total: e.target.checked ? true : entryForm.affects_project_total })} />
+                      Reembolsável
+                    </label>
+                    <label className="checkbox-card">
+                      <input type="checkbox" checked={entryForm.billable_to_client} onChange={e => setEntryForm({ ...entryForm, billable_to_client: e.target.checked })} />
+                      Cobrar do cliente
+                    </label>
+                  </>
+                )}
+                <label className="checkbox-card">
+                  <input type="checkbox" checked={entryForm.affects_my_financial} onChange={e => setEntryForm({ ...entryForm, affects_my_financial: e.target.checked })} />
+                  Meu financeiro
+                </label>
+                <label className="span-2">
+                  Observações
+                  <textarea value={entryForm.notes} onChange={e => setEntryForm({ ...entryForm, notes: e.target.value })} placeholder="Observações opcionais" />
+                </label>
+                <label>
+                  Nome do comprovante
+                  <input value={entryForm.document_file_name} onChange={e => setEntryForm({ ...entryForm, document_file_name: e.target.value })} placeholder="Ex: comprovante Pix" />
+                </label>
+                <label>
+                  Link do comprovante
+                  <input value={entryForm.document_file_url} onChange={e => setEntryForm({ ...entryForm, document_file_url: e.target.value })} placeholder="https://..." />
+                </label>
+                <label>
+                  Tipo do documento
+                  <select value={entryForm.document_type} onChange={e => setEntryForm({ ...entryForm, document_type: e.target.value })}>
+                    <option value="receipt">Comprovante</option>
+                    <option value="invoice">Nota fiscal</option>
+                    <option value="boleto">Boleto</option>
+                    <option value="other">Outro</option>
+                  </select>
+                </label>
+              </div>
+            )}
+
+            <div className="impact-summary">
+              {entryForm.affects_project_total && <span className="impact-pill">Impacta valor atualizado</span>}
+              {entryForm.own_amount && <span className="impact-pill">Impacta minha parte</span>}
+              {entryForm.transfer_amount && <span className="impact-pill">Impacta repasses</span>}
+              {entryForm.affects_my_financial && <span className="impact-pill">Reflete no financeiro pessoal</span>}
+              {entryForm.billable_to_client && <span className="impact-pill">Cobrável do cliente</span>}
+              {entryForm.affects_project_total && <p>Este lançamento impactará o valor atualizado do projeto.</p>}
+              {entryForm.billable_to_client && <p>Este custo será tratado como reembolsável/cobrável do cliente.</p>}
+              {entryForm.affects_my_financial && <p>Este lançamento também será refletido no seu financeiro pessoal.</p>}
+            </div>
+
+            <div className="entry-form-actions">
+              <button type="submit">{editingEntry ? 'Salvar alterações' : 'Adicionar lançamento'}</button>
+            </div>
           </form>
         )}
 
         {canViewProjectFinancials && (
-        <div className="entry-tabs">
-          {ENTRY_TAB_CONFIG.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={entryTab === value ? 'active' : ''}
-              onClick={() => setEntryTab(value)}
-            >
-              {label} <span>{entryTabCounts[value] || 0}</span>
-            </button>
-          ))}
-        </div>
+          <div className="entry-history-toolbar">
+            <div className="entry-tabs">
+              {ENTRY_TAB_CONFIG.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={entryTab === value ? 'active' : ''}
+                  onClick={() => setEntryTab(value)}
+                >
+                  {label} <span>{entryTabCounts[value] || 0}</span>
+                </button>
+              ))}
+            </div>
+            <input
+              className="entry-search"
+              value={entrySearch}
+              onChange={e => setEntrySearch(e.target.value)}
+              placeholder="Buscar por descrição, categoria ou status"
+            />
+          </div>
         )}
 
         {canViewProjectFinancials && (
-        <div className="entries-table">
-          <div className="entries-header">
-            <span>Tipo</span>
-            <span>Categoria</span>
-            <span>Descrição</span>
-            <span>Status</span>
-            <span>Responsável</span>
-            <span>Valor</span>
-            <span>Data</span>
-            <span>Acoes</span>
+          <div className="entries-table">
+            <div className="entries-header">
+              <span>Tipo</span>
+              <span>Categoria</span>
+              <span>Descrição</span>
+              <span>Status</span>
+              <span>Responsável</span>
+              <span>Valor</span>
+              <span>Data</span>
+              <span>Ações</span>
+            </div>
+            {visibleProjectEntries.map(entry => (
+              <article key={entry.id}>
+                <span className={`type-pill ${getEntryTypeValue(entry)}`}>{ENTRY_TYPES.find(type => type.value === getEntryTypeValue(entry))?.label || getEntryTypeValue(entry)}</span>
+                <span>{entry.category}</span>
+                <strong>{entry.description}</strong>
+                <span className={`status-pill ${entry.status}`}>{getEntryStatusLabel(entry.status)}</span>
+                <span>{entry.created_by_name || 'Você'}</span>
+                <strong>{formatCurrency(entry.gross_amount ?? entry.amount)}</strong>
+                <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
+                {canEditProjectEntries ? (
+                  <div className="entry-actions">
+                    <select
+                      value={entry.archived === 1 ? 'archived' : entry.status}
+                      disabled={entry.archived === 1}
+                      onChange={e => handleEntryStatus(entry, e.target.value)}
+                    >
+                      {ENTRY_STATUSES.filter(status => status.value !== 'archived').map(status => (
+                        <option key={status.value} value={status.value}>{status.label}</option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Ações do lançamento"
+                      value=""
+                      onChange={e => {
+                        const action = e.target.value;
+                        e.target.value = '';
+                        if (action === 'edit') handleEditEntry(entry);
+                        if (action === 'pending') handleEntryStatus(entry, 'pending');
+                        if (action === 'paid') handleEntryStatus(entry, 'paid');
+                        if (action === 'reimbursed') handleEntryStatus(entry, 'reimbursed');
+                        if (action === 'canceled') handleEntryStatus(entry, 'canceled');
+                        if (action === 'archive') handleArchiveEntry(entry);
+                        if (action === 'restore') handleRestoreEntry(entry);
+                      }}
+                    >
+                      <option value="">Ações</option>
+                      {entry.archived !== 1 && <option value="edit">Editar</option>}
+                      {entry.archived !== 1 && <option value="pending">Marcar como pendente</option>}
+                      {entry.archived !== 1 && <option value="paid">Marcar como pago</option>}
+                      {entry.archived !== 1 && <option value="reimbursed">Marcar como reembolsado</option>}
+                      {entry.archived !== 1 && <option value="canceled">Cancelar</option>}
+                      {entry.archived !== 1 && <option value="archive">Arquivar</option>}
+                      {entry.archived === 1 && <option value="restore">Restaurar</option>}
+                    </select>
+                  </div>
+                ) : <span>-</span>}
+              </article>
+            ))}
+            {visibleProjectEntries.length === 0 && <p className="empty">Nenhum lançamento nesta visualização.</p>}
           </div>
-          {visibleProjectEntries.map(entry => (
-            <article key={entry.id}>
-              <span className={`type-pill ${entry.type}`}>{ENTRY_TYPES.find(type => type.value === entry.type)?.label || entry.type}</span>
-              <span>{entry.category}</span>
-              <strong>{entry.description}</strong>
-              <span className={`status-pill ${entry.status}`}>{getEntryStatusLabel(entry.status)}</span>
-              <span>{entry.created_by_name || 'Você'}</span>
-              <strong>{formatCurrency(entry.gross_amount ?? entry.amount)}</strong>
-              <span>{new Date(entry.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</span>
-              {canEditProjectEntries ? (
-                <div className="entry-actions">
-                  <select
-                    value={entry.archived === 1 ? 'archived' : entry.status}
-                    disabled={entry.archived === 1}
-                    onChange={e => handleEntryStatus(entry, e.target.value)}
-                  >
-                    {ENTRY_STATUSES.filter(status => status.value !== 'archived').map(status => (
-                      <option key={status.value} value={status.value}>{status.label}</option>
-                    ))}
-                  </select>
-                  <select
-                    value=""
-                    onChange={e => {
-                      const action = e.target.value;
-                      e.target.value = '';
-                      if (action === 'edit') handleEditEntry(entry);
-                      if (action === 'pending') handleEntryStatus(entry, 'pending');
-                      if (action === 'paid') handleEntryStatus(entry, 'paid');
-                      if (action === 'reimbursed') handleEntryStatus(entry, 'reimbursed');
-                      if (action === 'canceled') handleEntryStatus(entry, 'canceled');
-                      if (action === 'archive') handleArchiveEntry(entry);
-                      if (action === 'restore') handleRestoreEntry(entry);
-                    }}
-                  >
-                    <option value="">...</option>
-                    {entry.archived !== 1 && <option value="edit">Editar</option>}
-                    {entry.archived !== 1 && <option value="pending">Pendente</option>}
-                    {entry.archived !== 1 && <option value="paid">Pago</option>}
-                    {entry.archived !== 1 && <option value="reimbursed">Reembolsado</option>}
-                    {entry.archived !== 1 && <option value="canceled">Cancelado</option>}
-                    {entry.archived !== 1 && <option value="archive">Arquivar</option>}
-                    {entry.archived === 1 && <option value="restore">Restaurar</option>}
-                  </select>
-                </div>
-              ) : <span>-</span>}
-            </article>
-          ))}
-          {visibleProjectEntries.length === 0 && <p className="empty">Nenhum lançamento nesta visualização.</p>}
-        </div>
         )}
       </section>
 

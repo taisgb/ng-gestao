@@ -7,6 +7,7 @@ const STATUSES = ['expected', 'paid', 'overdue', 'canceled'];
 const SOURCES = ['manual', 'project', 'project_distribution', 'reimbursement', 'renegotiation', 'recurring'];
 const FINANCIAL_SCOPES = ['personal', 'work', 'project'];
 const RECURRENCE_FREQUENCIES = ['monthly', 'weekly', 'yearly'];
+const VISIBILITIES = ['private', 'shared_with_owner', 'shared_with_financial_manager', 'shared_with_project'];
 
 function normalizeBoolean(value) {
     return value === true || value === 1 || value === '1' ? 1 : 0;
@@ -17,7 +18,7 @@ function normalizeSource(body = {}) {
 }
 
 function normalizeOriginLabel(source, value) {
-    if (source !== 'manual') return null;
+    if (!['manual', 'project_distribution'].includes(source)) return null;
     const label = String(value || '').trim();
     return label || null;
 }
@@ -100,6 +101,62 @@ async function findOwnTransaction(db, id, userId) {
         'SELECT * FROM personal_transactions WHERE id = ? AND user_id = ? AND archived = 0',
         [id, userId]
     );
+}
+
+function normalizeVisibility(value) {
+    return VISIBILITIES.includes(value) ? value : 'private';
+}
+
+async function syncProjectMemberFinancialEntry(db, transaction) {
+    if (!transaction?.id) return;
+
+    if (!transaction.project_id || transaction.financial_scope === 'personal' || transaction.archived === 1) {
+        await db.run(
+            'UPDATE project_member_financial_entries SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE personal_transaction_id = ?',
+            [transaction.id]
+        );
+        return;
+    }
+
+    const visibility = normalizeVisibility(transaction.visibility);
+    const sharedWithProjectOwner = visibility === 'shared_with_owner' || transaction.shared_with_project_owner === 1 ? 1 : 0;
+
+    await db.run(`
+        INSERT INTO project_member_financial_entries (
+            project_id, user_id, created_by, personal_transaction_id, financial_type,
+            gross_amount, own_amount, transfer_amount, payment_due_date, paid_at,
+            status, visibility, shared_with_project_owner, archived, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+        ON CONFLICT(personal_transaction_id) DO UPDATE SET
+            project_id = excluded.project_id,
+            user_id = excluded.user_id,
+            financial_type = excluded.financial_type,
+            gross_amount = excluded.gross_amount,
+            own_amount = excluded.own_amount,
+            transfer_amount = excluded.transfer_amount,
+            payment_due_date = excluded.payment_due_date,
+            paid_at = excluded.paid_at,
+            status = excluded.status,
+            visibility = excluded.visibility,
+            shared_with_project_owner = excluded.shared_with_project_owner,
+            archived = 0,
+            updated_at = CURRENT_TIMESTAMP
+    `, [
+        transaction.project_id,
+        transaction.user_id,
+        transaction.user_id,
+        transaction.id,
+        transaction.financial_type || transaction.type,
+        Number(transaction.gross_amount ?? transaction.amount ?? 0),
+        transaction.own_amount,
+        transaction.transfer_amount,
+        transaction.payment_due_date || null,
+        transaction.paid_at || null,
+        transaction.status || 'expected',
+        visibility,
+        sharedWithProjectOwner
+    ]);
 }
 
 function validatePayload(body, partial = false) {
@@ -372,13 +429,15 @@ module.exports = {
             const grossAmount = req.body.gross_amount === undefined || req.body.gross_amount === null || req.body.gross_amount === ''
                 ? toMoney(req.body.amount)
                 : toMoney(req.body.gross_amount);
+            const visibility = normalizeVisibility(req.body.visibility);
             const result = await db.run(`
                 INSERT INTO personal_transactions (
                     user_id, type, description, category, amount, gross_amount, own_amount, transfer_amount,
                     date, payment_due_date, paid_at, status, payment_method, source, origin_label,
-                    financial_type, financial_scope, recurrence_frequency, project_id, team_id, notes, is_recurring, archived, updated_at
+                    visibility, shared_with_project_owner, financial_type, financial_scope, recurrence_frequency,
+                    project_id, team_id, notes, is_recurring, archived, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
             `, [
                 req.userId,
                 req.body.type,
@@ -395,6 +454,8 @@ module.exports = {
                 req.body.payment_method || null,
                 source,
                 originLabel,
+                visibility,
+                visibility === 'shared_with_owner' || normalizeBoolean(req.body.shared_with_project_owner) ? 1 : 0,
                 financialType,
                 financialScope,
                 req.body.recurrence_frequency || null,
@@ -403,6 +464,9 @@ module.exports = {
                 req.body.notes || null,
                 normalizeBoolean(req.body.is_recurring)
             ]);
+
+            const created = await db.get('SELECT * FROM personal_transactions WHERE id = ?', [result.lastID]);
+            await syncProjectMemberFinancialEntry(db, created);
 
             return res.status(201).json({ id: result.lastID, message: 'Lançamento pessoal criado.' });
         } catch (error) {
@@ -455,6 +519,8 @@ module.exports = {
                     payment_method = ?,
                     source = ?,
                     origin_label = ?,
+                    visibility = ?,
+                    shared_with_project_owner = ?,
                     financial_type = ?,
                     financial_scope = ?,
                     recurrence_frequency = ?,
@@ -479,6 +545,10 @@ module.exports = {
                 req.body.payment_method === undefined ? transaction.payment_method : req.body.payment_method || null,
                 nextSource,
                 nextOriginLabel,
+                req.body.visibility === undefined ? transaction.visibility || 'private' : normalizeVisibility(req.body.visibility),
+                req.body.shared_with_project_owner === undefined
+                    ? transaction.shared_with_project_owner || 0
+                    : (normalizeVisibility(req.body.visibility) === 'shared_with_owner' || normalizeBoolean(req.body.shared_with_project_owner) ? 1 : 0),
                 nextFinancialType,
                 nextFinancialScope,
                 req.body.recurrence_frequency === undefined ? transaction.recurrence_frequency : req.body.recurrence_frequency || null,
@@ -489,6 +559,9 @@ module.exports = {
                 id,
                 req.userId
             ]);
+
+            const updated = await db.get('SELECT * FROM personal_transactions WHERE id = ?', [id]);
+            await syncProjectMemberFinancialEntry(db, updated);
 
             return res.json({ message: 'Lançamento pessoal atualizado.' });
         } catch (error) {
@@ -512,6 +585,9 @@ module.exports = {
                 [status, id, req.userId]
             );
 
+            const updated = await db.get('SELECT * FROM personal_transactions WHERE id = ?', [id]);
+            await syncProjectMemberFinancialEntry(db, updated);
+
             return res.json({ message: 'Status atualizado.' });
         } catch (error) {
             console.error('[PersonalTransactionController.updateStatus]', error);
@@ -529,6 +605,10 @@ module.exports = {
             await db.run(
                 'UPDATE personal_transactions SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?',
                 [id, req.userId]
+            );
+            await db.run(
+                'UPDATE project_member_financial_entries SET archived = 1, updated_at = CURRENT_TIMESTAMP WHERE personal_transaction_id = ?',
+                [id]
             );
 
             return res.json({ message: 'Lançamento arquivado.' });

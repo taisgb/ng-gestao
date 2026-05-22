@@ -2,6 +2,9 @@ const TEAM_ROLES = ['owner', 'admin', 'gestor', 'financeiro', 'member'];
 const TEAM_MANAGERS = ['owner', 'admin'];
 const TEAM_EDITORS = ['owner', 'admin', 'gestor'];
 const FINANCIAL_ROLES = ['owner', 'admin', 'gestor', 'financeiro'];
+const PROJECT_BILLING_MODES = ['centralized', 'split_private', 'shared'];
+const PROJECT_FINANCIAL_VISIBILITIES = ['private_owner', 'shared_authorized', 'shared_project'];
+const PRIVATE_FINANCIAL_VISIBILITIES = ['private', 'shared_with_owner', 'shared_with_financial_manager', 'shared_with_project'];
 
 async function getUser(db, userId) {
     if (!userId) return null;
@@ -163,6 +166,13 @@ async function getProjectAccess(db, userId, projectId) {
 async function canViewProjectFinancials(db, userId, projectId) {
     const project = await getProjectAccess(db, userId, projectId);
     if (!project) return false;
+    const visibility = project.financial_visibility || 'shared_authorized';
+    if (visibility === 'private_owner') {
+        return project.access_role === 'owner' || isProjectOwner(project, userId);
+    }
+    if (visibility === 'shared_project') {
+        return true;
+    }
     return FINANCIAL_ROLES.includes(project.access_role);
 }
 
@@ -172,6 +182,25 @@ async function canEditProjectFinancials(db, userId, projectId) {
 
 async function canViewOwnFinancialShare(db, userId, projectId) {
     return Boolean(await getProjectAccess(db, userId, projectId));
+}
+
+async function canViewPrivateProjectMemberFinancialEntry(db, userId, entry) {
+    if (!entry) return false;
+    if (Number(entry.user_id) === Number(userId) || Number(entry.created_by) === Number(userId)) return true;
+    if (!entry.project_id) return false;
+
+    const project = await getProjectAccess(db, userId, entry.project_id);
+    if (!project) return false;
+
+    const visibility = entry.visibility || 'private';
+    if (visibility === 'shared_with_project') return canViewProject(db, userId, entry.project_id);
+    if (visibility === 'shared_with_owner' || entry.shared_with_project_owner === 1) {
+        return project.access_role === 'owner' || isProjectOwner(project, userId);
+    }
+    if (visibility === 'shared_with_financial_manager') {
+        return canViewProjectFinancials(db, userId, entry.project_id);
+    }
+    return false;
 }
 
 async function canCreateProject(db, userId, payload = {}) {
@@ -231,13 +260,19 @@ async function canViewDocument(db, userId, document) {
     if (!document) return false;
     if (Number(document.user_id) === Number(userId)) return true;
     if (await getDocumentPermission(db, userId, document.id)) return true;
+    if ((document.document_visibility || 'shared_with_project') === 'private') return false;
     if (document.project_financial_entry_id) {
         const entry = await db.get('SELECT project_id, user_id, created_by FROM project_financial_entries WHERE id = ?', [document.project_financial_entry_id]);
         if (!entry) return false;
         if ([entry.user_id, entry.created_by].some(id => Number(id) === Number(userId))) return true;
         return canViewProjectFinancials(db, userId, entry.project_id);
     }
-    if (document.project_id) return canViewProject(db, userId, document.project_id);
+    if (document.project_id) {
+        if (document.document_visibility === 'shared_with_financial_manager') {
+            return canViewProjectFinancials(db, userId, document.project_id);
+        }
+        return canViewProject(db, userId, document.project_id);
+    }
     if (document.client_id) {
         const client = await db.get('SELECT * FROM clients WHERE id = ?', [document.client_id]);
         if (!(await canViewClient(db, userId, client))) return false;
@@ -290,6 +325,13 @@ function sanitizeProjectForRole(project, canViewFinancials = false) {
         payment_type: null,
         payment_status: null,
         total_value: null,
+        updated_value: null,
+        received_amount: null,
+        pending_amount: null,
+        net_balance: null,
+        margin: null,
+        transfers: null,
+        own_amount: null,
         remaining_balance: null,
         can_view_financials: false
     };
@@ -310,7 +352,11 @@ function sanitizeFinancialForRole(financial, canViewGlobal = false) {
 async function canViewInvoice(db, userId, invoice) {
     if (!invoice) return false;
     if (Number(invoice.user_id) === Number(userId)) return true;
-    if (invoice.project_id) return canViewProjectFinancials(db, userId, invoice.project_id);
+    if ((invoice.invoice_visibility || 'shared_with_financial_manager') === 'private') return false;
+    if (invoice.project_id) {
+        if (invoice.invoice_visibility === 'shared_with_project') return canViewProject(db, userId, invoice.project_id);
+        return canViewProjectFinancials(db, userId, invoice.project_id);
+    }
     return false;
 }
 
@@ -422,6 +468,9 @@ module.exports = {
     TEAM_MANAGERS,
     TEAM_EDITORS,
     FINANCIAL_ROLES,
+    PRIVATE_FINANCIAL_VISIBILITIES,
+    PROJECT_BILLING_MODES,
+    PROJECT_FINANCIAL_VISIBILITIES,
     canArchiveProject,
     canArchiveTeam,
     canAssignTask,
@@ -450,6 +499,7 @@ module.exports = {
     canViewDocument,
     canViewInvoice,
     canViewOwnFinancialShare,
+    canViewPrivateProjectMemberFinancialEntry,
     canViewPersonalFinance,
     canViewProject,
     canViewProjectFinancials,

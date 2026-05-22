@@ -2,6 +2,7 @@ const connectDb = require('../config/database');
 const { isDate, isNonEmptyString, isNonNegativeMoney, toMoney } = require('../utils/validators');
 const {
     canEditProjectFinancials,
+    canViewPrivateProjectMemberFinancialEntry,
     canViewOwnFinancialShare,
     canViewProjectFinancials,
     getProjectAccess
@@ -113,10 +114,31 @@ module.exports = {
                 ORDER BY pfe.date DESC, pfe.id DESC
             `, [id, canViewGlobal ? 1 : 0, req.userId, req.userId]);
 
+            const privateRows = await db.all(`
+                SELECT pmfe.*, u.name as participant_name
+                FROM project_member_financial_entries pmfe
+                LEFT JOIN users u ON u.id = pmfe.user_id
+                WHERE pmfe.project_id = ?
+                  AND COALESCE(pmfe.archived, 0) = 0
+                ORDER BY COALESCE(pmfe.payment_due_date, pmfe.paid_at, pmfe.created_at) DESC, pmfe.id DESC
+            `, [id]);
+            const private_entries = [];
+            for (const row of privateRows) {
+                if (await canViewPrivateProjectMemberFinancialEntry(db, req.userId, row)) {
+                    private_entries.push({
+                        ...row,
+                        gross_amount: Number(row.user_id) === Number(req.userId) || row.visibility !== 'private' ? row.gross_amount : null,
+                        own_amount: Number(row.user_id) === Number(req.userId) || row.visibility !== 'private' ? row.own_amount : null,
+                        transfer_amount: Number(row.user_id) === Number(req.userId) || row.visibility !== 'private' ? row.transfer_amount : null
+                    });
+                }
+            }
+
             return res.json({
                 can_view_global: canViewGlobal,
                 can_edit_global: await canEditProjectFinancials(db, req.userId, id),
-                entries
+                entries,
+                private_entries
             });
         } catch (error) {
             console.error('[ProjectFinancialController.index]', error);

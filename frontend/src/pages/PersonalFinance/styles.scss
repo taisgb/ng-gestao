@@ -71,12 +71,105 @@ $line: #ece7df;
   }
 
   input,
-  select {
+  select,
+  textarea {
     border: 1px solid $line;
     border-radius: 8px;
     padding: 10px;
     min-width: 0;
     background: #fff;
+  }
+
+  textarea {
+    min-height: 86px;
+    resize: vertical;
+  }
+
+  .context-tabs,
+  .movement-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+
+    button {
+      background: #fff;
+      border: 1px solid $line;
+      border-radius: 999px;
+      color: $earth-brown;
+      font-weight: 800;
+      padding: 9px 14px;
+
+      &.active {
+        background: $ink-blue;
+        border-color: $ink-blue;
+        color: #fff;
+        box-shadow: 0 10px 24px rgba(52, 81, 111, 0.16);
+      }
+    }
+  }
+
+  .finance-toolbar {
+    align-items: center;
+    background: #fff;
+    border: 1px solid $line;
+    border-radius: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 12px;
+
+    select,
+    input {
+      min-height: 42px;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+      border-radius: 9px;
+      font-weight: 900;
+      min-height: 42px;
+      padding: 0 14px;
+    }
+
+    .btn-primary {
+      background: $leaf-green;
+      border: 1px solid $leaf-green;
+      color: #fff;
+      margin-left: auto;
+      box-shadow: 0 12px 26px rgba(109, 122, 95, 0.18);
+    }
+
+    .btn-secondary {
+      background: $sand-bg;
+      border: 1px solid $line;
+      color: $ink-blue;
+    }
+  }
+
+  .personal-summary.compact {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .personal-summary.detailed {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .kpi-toggle {
+    margin: -8px 0 16px;
+
+    button {
+      background: transparent;
+      border: 0;
+      color: $ink-blue;
+      font-weight: 900;
+      padding: 6px 0;
+    }
+  }
+
+  .advanced-filters {
+    animation: revealOriginInput 160ms ease-out;
   }
 
   .personal-grid {
@@ -155,7 +248,7 @@ $line: #ece7df;
     .table-head,
     article {
       display: grid;
-      grid-template-columns: 90px minmax(150px, 1.3fr) 130px minmax(150px, 1fr) 140px 100px 110px 96px;
+      grid-template-columns: minmax(190px, 1.6fr) minmax(170px, 1.2fr) minmax(120px, 0.9fr) 116px 116px 104px 86px;
       gap: 8px;
       align-items: center;
     }
@@ -174,6 +267,16 @@ $line: #ece7df;
 
       strong { color: $earth-brown; }
       span { color: #777; }
+    }
+
+    .description-cell {
+      display: grid;
+      gap: 4px;
+
+      small {
+        color: #888;
+        font-size: 0.76rem;
+      }
     }
 
     .scope-cell {
@@ -360,6 +463,174 @@ $line: #ece7df;
     }
   }
 
+  .drawer-backdrop {
+    align-items: stretch;
+    justify-content: flex-end;
+    padding: 0;
+  }
+
+  .transaction-drawer {
+    background: #fff;
+    border-left: 1px solid $line;
+    box-shadow: -24px 0 70px rgba(17, 24, 39, 0.18);
+    max-width: 560px;
+    min-height: 100vh;
+    overflow-y: auto;
+    padding: 22px;
+    width: min(560px, 100%);
+
+    header {
+      align-items: flex-start;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+
+      span {
+        color: #777;
+        display: block;
+        font-size: 0.76rem;
+        font-weight: 900;
+        letter-spacing: 0.04em;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+
+      strong {
+        color: $earth-brown;
+        font-size: 1.18rem;
+      }
+    }
+
+    .modal-close {
+      align-items: center;
+      background: $sand-bg;
+      border: 1px solid $line;
+      border-radius: 999px;
+      color: $ink-blue;
+      display: inline-flex;
+      font-weight: 900;
+      height: 36px;
+      justify-content: center;
+      width: 36px;
+    }
+  }
+
+  .choice-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    button {
+      background: $sand-bg;
+      border: 1px solid $line;
+      border-radius: 12px;
+      color: $earth-brown;
+      font-weight: 900;
+      min-height: 76px;
+      padding: 14px;
+      text-align: left;
+
+      &:hover {
+        border-color: rgba($leaf-green, 0.42);
+        box-shadow: 0 12px 28px rgba(29, 53, 44, 0.10);
+        transform: translateY(-1px);
+      }
+    }
+  }
+
+  .drawer-form {
+    display: grid;
+    gap: 12px;
+
+    label {
+      color: #777;
+      display: grid;
+      font-size: 0.8rem;
+      font-weight: 800;
+      gap: 6px;
+    }
+
+    .form-row {
+      display: grid;
+      gap: 10px;
+
+      &.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      &.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    .checkbox-line {
+      align-items: center;
+      display: flex;
+      gap: 8px;
+    }
+
+    .drawer-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 6px;
+
+      button {
+        border-radius: 9px;
+        font-weight: 900;
+        min-height: 42px;
+        padding: 0 14px;
+      }
+
+      button[type='submit'] {
+        background: $leaf-green;
+        border: 1px solid $leaf-green;
+        color: #fff;
+      }
+
+      .btn-cancel {
+        background: #fff;
+        border: 1px solid $line;
+        color: $earth-brown;
+      }
+    }
+  }
+
+  .balance-modal form {
+    display: grid;
+    gap: 8px;
+
+    label {
+      color: #777;
+      font-size: 0.8rem;
+      font-weight: 800;
+    }
+
+    button {
+      background: $leaf-green;
+      border: 0;
+      border-radius: 9px;
+      color: #fff;
+      font-weight: 900;
+      min-height: 42px;
+      margin-top: 6px;
+    }
+  }
+
+  .panel-title-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+
+    p {
+      color: #777;
+      font-size: 0.86rem;
+      margin-top: -8px;
+    }
+  }
+
   .renegotiation-form {
     display: grid;
     grid-template-columns: 1fr 150px 140px 150px auto;
@@ -414,9 +685,22 @@ $line: #ece7df;
     .personal-summary,
     .filters-panel,
     .personal-grid,
+    .personal-summary.compact,
+    .drawer-form .form-row.two,
+    .drawer-form .form-row.three,
+    .choice-grid,
     .panel form,
     .renegotiation-form {
       grid-template-columns: 1fr;
+    }
+
+    .finance-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+
+      .btn-primary {
+        margin-left: 0;
+      }
     }
 
     .transaction-table {
@@ -435,11 +719,93 @@ $line: #ece7df;
         justify-content: flex-start;
       }
     }
+
+    .transaction-drawer {
+      max-width: none;
+      min-height: 100dvh;
+      width: 100%;
+    }
   }
 }
 
 body[data-theme='dark'] {
   .personal-finance-container {
+    .context-tabs,
+    .movement-tabs {
+      button {
+        background: #18211c;
+        border-color: rgba(255, 255, 255, 0.12);
+        color: #f4f1ea;
+
+        &.active {
+          background: #6d7a5f;
+          border-color: #6d7a5f;
+          color: #fff;
+        }
+      }
+    }
+
+    .finance-toolbar,
+    .transaction-drawer,
+    .summary-card,
+    .panel,
+    .transactions-panel,
+    .renegotiations-panel,
+    .filters-panel {
+      background: #18211c;
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .finance-toolbar .btn-secondary,
+    .drawer-form .drawer-actions .btn-cancel,
+    .choice-grid button {
+      background: #111814;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #f4f1ea;
+    }
+
+    input,
+    select,
+    textarea {
+      background: #162019;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #f4f1ea;
+
+      &::placeholder {
+        color: #9c948a;
+      }
+    }
+
+    .summary-card {
+      span {
+        color: #c8c1b7;
+      }
+
+      strong {
+        color: #a8d99b;
+      }
+    }
+
+    .kpi-toggle button,
+    .panel-title-row p,
+    .drawer-form label,
+    .balance-modal form label,
+    .transaction-drawer header span,
+    .transaction-table .description-cell small {
+      color: #c8c1b7;
+    }
+
+    .transaction-drawer header strong,
+    .transaction-table article strong {
+      color: #f4f1ea;
+    }
+
+    .transaction-drawer .modal-close {
+      background: #111814;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: #f4f1ea;
+    }
+
     .panel form .origin-label-input {
       background: #162019;
       border-color: rgba(159, 223, 179, 0.38);
@@ -451,6 +817,18 @@ body[data-theme='dark'] {
     }
 
     .transaction-table {
+      .table-head {
+        color: #c8c1b7;
+      }
+
+      article {
+        border-color: rgba(255, 255, 255, 0.08);
+
+        span {
+          color: #c8c1b7;
+        }
+      }
+
       .scope-badge {
         &.personal {
           background: rgba(196, 181, 253, 0.16);
@@ -470,6 +848,22 @@ body[data-theme='dark'] {
 
       .scope-cell small {
         color: #c8c1b7;
+      }
+
+      .status {
+        background: #111814;
+        color: #f4f1ea;
+
+        &.paid {
+          background: rgba(168, 217, 155, 0.16);
+          color: #a8d99b;
+        }
+
+        &.overdue,
+        &.canceled {
+          background: rgba(252, 165, 165, 0.16);
+          color: #fca5a5;
+        }
       }
     }
 

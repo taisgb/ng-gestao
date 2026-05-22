@@ -7,6 +7,8 @@ const {
     canViewTeamResource,
     getProjectAccess: getSharedProjectAccess,
     isProjectOwner,
+    PROJECT_BILLING_MODES,
+    PROJECT_FINANCIAL_VISIBILITIES,
     sanitizeProjectForRole
 } = require('../utils/permissions');
 const { logActivity } = require('../utils/activityLog');
@@ -104,6 +106,8 @@ module.exports = {
                 status,
                 scope = 'individual',
                 team_id,
+                billing_mode = 'centralized',
+                financial_visibility = 'shared_authorized',
                 member_ids = []
             } = req.body;
             const db = await connectDb();
@@ -129,6 +133,14 @@ module.exports = {
 
             if (projectValue !== undefined && !isNonNegativeMoney(projectValue)) {
                 return res.status(400).json({ error: 'Valor do projeto inválido.' });
+            }
+
+            if (!PROJECT_BILLING_MODES.includes(billing_mode)) {
+                return res.status(400).json({ error: 'Modo financeiro do projeto inválido.' });
+            }
+
+            if (!PROJECT_FINANCIAL_VISIBILITIES.includes(financial_visibility)) {
+                return res.status(400).json({ error: 'Visibilidade financeira do projeto inválida.' });
             }
 
             const client = await db.get('SELECT id, user_id, team_id FROM clients WHERE id = ? AND archived = 0', [client_id]);
@@ -181,9 +193,9 @@ module.exports = {
             const result = await db.run(`
                 INSERT INTO projects (
                     client_id, team_id, scope, title, description, status, base_value, payment_type,
-                    deadline, warranty_start_date, warranty_days, warranty_end_date, user_id
+                    billing_mode, financial_visibility, deadline, warranty_start_date, warranty_days, warranty_end_date, user_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [
                 client_id,
                 projectTeamId,
@@ -193,6 +205,8 @@ module.exports = {
                 status || 'pendente',
                 toMoney(projectValue),
                 payment_type || null,
+                billing_mode,
+                financial_visibility,
                 deadline || null,
                 warranty_start_date || null,
                 Number(warranty_days || 0),
@@ -392,7 +406,9 @@ module.exports = {
                 response.amount_paid = null;
                 response.payment_type = null;
                 response.payment_status = null;
-                response.financial_notice = 'Você visualiza apenas sua própria parte financeira neste projeto.';
+                response.financial_notice = project.billing_mode === 'split_private'
+                    ? 'As informações financeiras deste projeto são privadas.'
+                    : 'Você visualiza apenas sua própria parte financeira neste projeto.';
             }
 
             return res.json(response);
@@ -420,7 +436,9 @@ module.exports = {
                 scope,
                 team_id,
                 warranty_start_date,
-                warranty_days
+                warranty_days,
+                billing_mode,
+                financial_visibility
             } = req.body;
             const db = await connectDb();
 
@@ -429,7 +447,7 @@ module.exports = {
 
             const requestedFields = Object.keys(req.body);
             const canEditFinancials = await canEditProjectFinancials(db, req.userId, id);
-            const sensitiveFields = ['base_value', 'payment_type', 'payment_status', 'amount_paid'];
+            const sensitiveFields = ['base_value', 'payment_type', 'payment_status', 'amount_paid', 'billing_mode', 'financial_visibility'];
             if (!canEditFinancials && requestedFields.some(field => sensitiveFields.includes(field))) {
                 return res.status(403).json({ error: 'Sem permissão para editar valores financeiros do projeto.' });
             }
@@ -462,6 +480,14 @@ module.exports = {
 
             if (warranty_days !== undefined && warranty_days !== null && warranty_days !== '' && (!Number.isInteger(Number(warranty_days)) || Number(warranty_days) < 0)) {
                 return res.status(400).json({ error: 'Prazo de garantia inválido.' });
+            }
+
+            if (billing_mode !== undefined && !PROJECT_BILLING_MODES.includes(billing_mode)) {
+                return res.status(400).json({ error: 'Modo financeiro do projeto inválido.' });
+            }
+
+            if (financial_visibility !== undefined && !PROJECT_FINANCIAL_VISIBILITIES.includes(financial_visibility)) {
+                return res.status(400).json({ error: 'Visibilidade financeira do projeto inválida.' });
             }
 
             let nextClientId = project.client_id;
@@ -514,6 +540,8 @@ module.exports = {
             if (payment_type !== undefined) addField('payment_type', payment_type || null);
             if (payment_status !== undefined) addField('payment_status', payment_status || null);
             if (amount_paid !== undefined) addField('amount_paid', toMoney(amount_paid));
+            if (billing_mode !== undefined) addField('billing_mode', billing_mode);
+            if (financial_visibility !== undefined) addField('financial_visibility', financial_visibility);
             if (deadline !== undefined) addField('deadline', deadline || null);
             if (scope !== undefined) addField('scope', nextScope);
             if (team_id !== undefined || scope !== undefined) addField('team_id', nextTeamId);

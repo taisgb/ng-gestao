@@ -180,6 +180,127 @@ test('project financial permissions hide global totals from member', async () =>
     }
 });
 
+test('split private project keeps participant financial entries private until shared', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run(
+            "UPDATE projects SET billing_mode = 'split_private', financial_visibility = 'shared_authorized' WHERE id = ?",
+            [seeded.projectId]
+        );
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+
+        const privateCreate = await callController(PersonalTransactionController.create, {
+            userId: seeded.memberId,
+            body: {
+                type: 'income',
+                description: 'Receita privada da participante',
+                category: 'Projeto',
+                amount: 1400,
+                gross_amount: 4800,
+                own_amount: 1400,
+                transfer_amount: 3400,
+                date: '2026-05-01',
+                payment_due_date: '2026-06-10',
+                status: 'expected',
+                source: 'project',
+                financial_type: 'revenue',
+                financial_scope: 'project',
+                project_id: seeded.projectId,
+                visibility: 'private'
+            }
+        });
+        assert.equal(privateCreate.statusCode, 201);
+
+        const ownerView = await callController(ProjectFinancialController.index, {
+            userId: seeded.ownerId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(ownerView.statusCode, 200);
+        assert.equal(ownerView.body.private_entries.length, 0);
+
+        const memberView = await callController(ProjectFinancialController.index, {
+            userId: seeded.memberId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(memberView.statusCode, 200);
+        assert.equal(memberView.body.private_entries.length, 1);
+        assert.equal(Number(memberView.body.private_entries[0].own_amount), 1400);
+
+        await callController(PersonalTransactionController.create, {
+            userId: seeded.memberId,
+            body: {
+                type: 'income',
+                description: 'Receita compartilhada com responsável',
+                category: 'Projeto',
+                amount: 900,
+                gross_amount: 900,
+                own_amount: 900,
+                date: '2026-05-02',
+                payment_due_date: '2026-06-15',
+                status: 'expected',
+                source: 'project',
+                financial_type: 'revenue',
+                financial_scope: 'project',
+                project_id: seeded.projectId,
+                visibility: 'shared_with_owner'
+            }
+        });
+
+        const ownerAfterShare = await callController(ProjectFinancialController.index, {
+            userId: seeded.ownerId,
+            params: { id: seeded.projectId }
+        });
+        assert.equal(ownerAfterShare.statusCode, 200);
+        assert.equal(ownerAfterShare.body.private_entries.length, 1);
+        assert.equal(Number(ownerAfterShare.body.private_entries[0].own_amount), 900);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('private owner visibility and private project invoice do not leak to team admins', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run(
+            "UPDATE projects SET financial_visibility = 'private_owner' WHERE id = ?",
+            [seeded.projectId]
+        );
+
+        assert.equal(await canViewProjectFinancials(db, seeded.ownerId, seeded.projectId), true);
+        assert.equal(await canViewProjectFinancials(db, seeded.adminId, seeded.projectId), false);
+
+        await db.run(
+            "INSERT OR IGNORE INTO project_members (project_id, user_id, role) VALUES (?, ?, 'member')",
+            [seeded.projectId, seeded.memberId]
+        );
+        const invoice = await db.run(`
+            INSERT INTO invoices (user_id, project_id, number, client_name, amount, invoice_visibility, issue_date, status)
+            VALUES (?, ?, 'NF-PRIVATE', 'Cliente Compartilhado', 1200, 'private', '2026-05-20', 'emitida')
+        `, [seeded.memberId, seeded.projectId]);
+
+        const ownerInvoices = await callController(InvoiceController.index, {
+            userId: seeded.ownerId,
+            query: { project_id: seeded.projectId }
+        });
+        assert.equal(ownerInvoices.statusCode, 200);
+        assert.equal(ownerInvoices.body.some(item => item.id === invoice.lastID), false);
+
+        const memberInvoices = await callController(InvoiceController.index, {
+            userId: seeded.memberId,
+            query: { project_id: seeded.projectId }
+        });
+        assert.equal(memberInvoices.statusCode, 200);
+        assert.equal(memberInvoices.body.some(item => item.id === invoice.lastID), true);
+    } finally {
+        await cleanup();
+    }
+});
+
 test('acl sanitizes client, project, task and user sensitive fields for restricted roles', async () => {
     const { db, cleanup } = await openTestDb();
     try {

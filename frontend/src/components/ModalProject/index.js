@@ -12,6 +12,8 @@ const emptyForm = {
   deadline: '',
   scope: 'individual',
   team_id: '',
+  billing_mode: 'centralized',
+  financial_visibility: 'shared_authorized',
   member_ids: []
 };
 const ROLE_LABELS = {
@@ -221,6 +223,30 @@ export default function ModalProject({ isOpen, onClose, onSuccess }) {
               )}
             </>
           )}
+
+          <div className="input-group">
+            <label>Como os valores deste projeto serão gerenciados?</label>
+            <select
+              value={formData.billing_mode}
+              onChange={e => setFormData({ ...formData, billing_mode: e.target.value })}
+            >
+              <option value="centralized">Uma pessoa cobra e realiza repasses</option>
+              <option value="split_private">Cada participante controla seus valores privadamente</option>
+              <option value="shared">Financeiro compartilhado com pessoas autorizadas</option>
+            </select>
+          </div>
+
+          <div className="input-group">
+            <label>Quem pode visualizar valores do projeto?</label>
+            <select
+              value={formData.financial_visibility}
+              onChange={e => setFormData({ ...formData, financial_visibility: e.target.value })}
+            >
+              <option value="private_owner">Apenas eu / dono financeiro</option>
+              <option value="shared_authorized">Pessoas com permissão financeira</option>
+              <option value="shared_project">Todos os participantes autorizados</option>
+            </select>
+          </div>
 
           <div className="input-row">
             <div className="input-group">
