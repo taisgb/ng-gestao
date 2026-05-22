@@ -35,6 +35,24 @@ function gross(row) {
     return money(row.gross_amount ?? row.amount);
 }
 
+function grossClientValue(row, project) {
+    const rawGross = gross(row);
+    const billingMode = project?.billing_mode || 'centralized';
+    const explicitOwn = row.own_amount !== undefined && row.own_amount !== null ? money(row.own_amount) : null;
+    const explicitTransfer = transfer(row);
+
+    if (billingMode === 'centralized' && explicitOwn !== null && explicitTransfer > 0 && rawGross <= explicitOwn) {
+        return explicitOwn + explicitTransfer;
+    }
+
+    if (rawGross > 0) return rawGross;
+    if (billingMode === 'centralized' && explicitOwn !== null && explicitTransfer > 0) {
+        return explicitOwn + explicitTransfer;
+    }
+
+    return rawGross;
+}
+
 function own(row) {
     if (row.own_amount !== undefined && row.own_amount !== null) return money(row.own_amount);
     return Math.max(0, gross(row) - transfer(row));
@@ -62,7 +80,7 @@ function isReceived(row) {
 }
 
 async function calculateProjectFinancialSummary(db, projectId) {
-    const project = await db.get('SELECT base_value FROM projects WHERE id = ?', [projectId]);
+    const project = await db.get('SELECT base_value, billing_mode FROM projects WHERE id = ?', [projectId]);
     const rows = await db.all(`
         SELECT *
         FROM project_financial_entries
@@ -75,7 +93,7 @@ async function calculateProjectFinancialSummary(db, projectId) {
     const additionalIncome = activeRows
         .filter(row => ADDITIONAL_INCOME_TYPES.includes(normalizeType(row)))
         .filter(affectsProjectTotal)
-        .reduce((sum, row) => sum + gross(row), 0);
+        .reduce((sum, row) => sum + grossClientValue(row, project), 0);
 
     const negativeAdjustments = activeRows
         .filter(row => NEGATIVE_ADJUSTMENT_TYPES.includes(normalizeType(row)))
@@ -96,7 +114,7 @@ async function calculateProjectFinancialSummary(db, projectId) {
             PAYMENT_TYPES.includes(normalizeType(row)) ||
             normalizeType(row) === 'reimbursement'
         ))
-        .reduce((sum, row) => sum + gross(row), 0);
+        .reduce((sum, row) => sum + grossClientValue(row, project), 0);
 
     const operationalExpenses = activeRows
         .filter(row => OPERATIONAL_EXPENSE_TYPES.includes(normalizeType(row)))
@@ -142,7 +160,7 @@ async function calculateProjectFinancialSummary(db, projectId) {
         base_contract_value: contractValue,
         gross_revenue: activeRows
             .filter(row => ADDITIONAL_INCOME_TYPES.includes(normalizeType(row)) || PAYMENT_TYPES.includes(normalizeType(row)))
-            .reduce((sum, row) => sum + gross(row), 0),
+            .reduce((sum, row) => sum + grossClientValue(row, project), 0),
         additional_income: additionalIncome,
         billable_reimbursable_costs: billableReimbursableCosts,
         negative_adjustments: negativeAdjustments,

@@ -85,6 +85,15 @@ function getProviderLabel(provider) {
   return PROVIDER_LABELS[provider] || 'Outro';
 }
 
+function calculateWarrantyPreview(startDate, days) {
+  const totalDays = Number(days);
+  if (!startDate || !Number.isInteger(totalDays) || totalDays <= 0) return null;
+
+  const date = new Date(`${startDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + totalDays);
+  return date.toISOString().split('T')[0];
+}
+
 function emptyEntryForm() {
   return {
     type: 'revenue',
@@ -334,9 +343,11 @@ export default function ProjectDetails() {
     try {
       await api.put(`/projects/${id}`, {
         ...projectForm,
+        deadline: projectForm.deadline || null,
         team_id: projectForm.scope === 'team' ? projectForm.team_id : null,
         base_value: projectForm.base_value === '' ? 0 : Number(projectForm.base_value),
-        warranty_days: projectForm.warranty_days === '' ? 0 : Number(projectForm.warranty_days)
+        warranty_start_date: projectForm.warranty_start_date || null,
+        warranty_days: projectForm.warranty_days === '' ? null : Number(projectForm.warranty_days)
       });
       setIsProjectEditOpen(false);
       await loadProjectData();
@@ -580,7 +591,7 @@ export default function ProjectDetails() {
     ['Valor atualizado', projectFinanceSummary?.updated_value ?? projectFinanceSummary?.updated_total_value],
     ['Recebido do cliente', projectFinanceSummary?.received_client ?? projectFinanceSummary?.received ?? projectFinanceSummary?.total_received],
     ['Pendente do cliente', projectFinanceSummary?.pending_client ?? projectFinanceSummary?.pending ?? projectFinanceSummary?.total_pending],
-    ['Minha parte', projectFinanceSummary?.own_amount ?? projectFinanceSummary?.my_share],
+    ['Minha parte líquida', projectFinanceSummary?.own_amount ?? projectFinanceSummary?.my_share],
     ['Saldo líquido previsto', projectFinanceSummary?.net_balance ?? projectFinanceSummary?.estimated_net_balance]
   ];
   const detailedFinanceKpis = [
@@ -588,7 +599,7 @@ export default function ProjectDetails() {
     ['Receitas adicionais', projectFinanceSummary?.additional_income],
     ['Custos reembolsáveis cobrados', projectFinanceSummary?.billable_reimbursable_costs],
     ['Despesas operacionais', projectFinanceSummary?.operational_expenses ?? projectFinanceSummary?.expenses ?? projectFinanceSummary?.total_expenses],
-    ['Repasses', projectFinanceSummary?.transfers_total],
+    ['Repasse para terceiros', projectFinanceSummary?.transfers_total],
     ['Pendente de repasse', projectFinanceSummary?.pending_transfer],
     ['A reembolsar', projectFinanceSummary?.reimbursable_expenses],
     ['Caixa atual', projectFinanceSummary?.cash_current ?? projectFinanceSummary?.current_cash]
@@ -627,6 +638,7 @@ export default function ProjectDetails() {
   const isTransferEntry = selectedEntryType === 'transfer';
   const isReimbursementEntry = selectedEntryType === 'reimbursement';
   const isPaymentReceivedEntry = selectedEntryType === 'payment_received';
+  const warrantyPreview = calculateWarrantyPreview(projectForm.warranty_start_date, projectForm.warranty_days);
   const entryAmountLabel = isRevenueEntry
     ? 'Valor bruto'
     : isTransferEntry
@@ -636,6 +648,13 @@ export default function ProjectDetails() {
         : isPaymentReceivedEntry
           ? 'Valor recebido'
           : 'Valor';
+  const entryContextHelp = isPaymentReceivedEntry || isRevenueEntry
+    ? 'Informe aqui o valor pago pelo cliente. Sua parte líquida será calculada separadamente após repasses e despesas.'
+    : isTransferEntry
+      ? 'Este valor é uma saída para colaborador/parceiro e não reduz o valor pendente do cliente.'
+      : isOperationalExpenseEntry
+        ? 'Despesas reduzem o saldo líquido. Se forem cobradas do cliente, marque como reembolsável/cobrável.'
+        : '';
 
   return (
     <div className="project-details-container">
@@ -704,8 +723,9 @@ export default function ProjectDetails() {
             </label>
             <div className="edit-grid">
               <label>
-                Prazo
+                Prazo de entrega
                 <input type="date" value={projectForm.deadline || ''} onChange={e => setProjectForm({ ...projectForm, deadline: e.target.value })} />
+                <small>Opcional. Pode ficar vazio mesmo com o projeto em garantia.</small>
               </label>
               <label>
                 Status
@@ -756,13 +776,18 @@ export default function ProjectDetails() {
             </label>
             <div className="edit-grid">
               <label>
-                Inicio da garantia
+                Início da garantia
                 <input type="date" value={projectForm.warranty_start_date || ''} onChange={e => setProjectForm({ ...projectForm, warranty_start_date: e.target.value })} />
               </label>
               <label>
-                Prazo garantia (dias)
-                <input type="number" min="0" step="1" value={projectForm.warranty_days ?? ''} onChange={e => setProjectForm({ ...projectForm, warranty_days: e.target.value })} />
+                Duração da garantia
+                <input type="number" min="1" step="1" value={projectForm.warranty_days ?? ''} onChange={e => setProjectForm({ ...projectForm, warranty_days: e.target.value })} />
+                <small>Informe a quantidade de dias de garantia.</small>
               </label>
+            </div>
+            <div className="warranty-preview">
+              <span>Garantia até</span>
+              <strong>{warrantyPreview ? new Date(warrantyPreview).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'Preencha início e duração para calcular'}</strong>
             </div>
 
             <div className="drawer-actions">
@@ -944,6 +969,8 @@ export default function ProjectDetails() {
                 </select>
               </label>
             </div>
+
+            {entryContextHelp && <p className="entry-context-help">{entryContextHelp}</p>}
 
             <button type="button" className="advanced-toggle" onClick={() => setShowAdvancedEntryOptions(current => !current)}>
               {showAdvancedEntryOptions ? 'Ocultar opções avançadas' : 'Mais opções'}

@@ -498,6 +498,74 @@ test('project finance engine separates gross revenue, transfers, reimbursements 
     }
 });
 
+test('centralized billing treats client payment as gross amount and keeps transfers separate', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run("UPDATE projects SET base_value = 4800, billing_mode = 'centralized' WHERE id = ?", [seeded.projectId]);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, own_amount, transfer_amount, date, paid_at, status,
+                affects_project_total, affects_my_financial, affects_personal_finance
+            )
+            VALUES (?, ?, ?, ?, 'payment_received', 'payment_received', 'Pagamento do cliente', 'Pagamento',
+                1400, 1400, 1400, 3400, '2026-05-20', '2026-05-20', 'paid', 0, 1, 1)
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, transfer_amount, date, paid_at, status
+            )
+            VALUES (?, ?, ?, ?, 'transfer', 'transfer', 'Repasse designers', 'Repasse',
+                3400, 3400, 3400, '2026-05-20', '2026-05-20', 'paid')
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        const summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
+
+        assert.equal(summary.updated_value, 4800);
+        assert.equal(summary.received_client, 4800);
+        assert.equal(summary.pending_client, 0);
+        assert.equal(summary.transfers_total, 3400);
+        assert.equal(summary.pending_transfer, 0);
+        assert.equal(summary.own_amount, 1400);
+        assert.equal(summary.net_balance, 1400);
+        assert.equal(summary.cash_current, 1400);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('paid transfer without client payment does not reduce client pending amount', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+        await db.run("UPDATE projects SET base_value = 4800, billing_mode = 'centralized' WHERE id = ?", [seeded.projectId]);
+
+        await db.run(`
+            INSERT INTO project_financial_entries (
+                project_id, team_id, user_id, created_by, type, financial_type, description, category,
+                amount, gross_amount, transfer_amount, date, paid_at, status
+            )
+            VALUES (?, ?, ?, ?, 'transfer', 'transfer', 'Repasse designers', 'Repasse',
+                3400, 3400, 3400, '2026-05-20', '2026-05-20', 'paid')
+        `, [seeded.projectId, seeded.teamId, seeded.ownerId, seeded.ownerId]);
+
+        const summary = await ProjectFinancialController._calculateSummary(db, seeded.projectId);
+
+        assert.equal(summary.updated_value, 4800);
+        assert.equal(summary.received_client, 0);
+        assert.equal(summary.pending_client, 4800);
+        assert.equal(summary.transfers_total, 3400);
+        assert.equal(summary.pending_transfer, 0);
+        assert.equal(summary.cash_current, -3400);
+    } finally {
+        await cleanup();
+    }
+});
+
 test('reimbursable and non-reimbursable costs affect updated value and profit correctly', async () => {
     const { db, cleanup } = await openTestDb();
     try {
@@ -663,6 +731,68 @@ test('project editors can update core fields and warranty dates are calculated',
         assert.equal(project.warranty_days, 30);
         assert.equal(project.warranty_end_date, '2026-08-20');
         assert.equal(project.team_id, seeded.teamId);
+    } finally {
+        await cleanup();
+    }
+});
+
+test('project can enter warranty without delivery deadline and validates warranty fields specifically', async () => {
+    const { db, cleanup } = await openTestDb();
+    try {
+        const seeded = await seedTeamProject(db);
+
+        const updated = await callController(ProjectController.update, {
+            userId: seeded.gestorId,
+            params: { id: seeded.projectId },
+            body: {
+                deadline: '',
+                status: 'garantia',
+                warranty_start_date: '2026-05-06',
+                warranty_days: '30'
+            }
+        });
+        assert.equal(updated.statusCode, 200);
+
+        let project = await db.get('SELECT deadline, status, warranty_start_date, warranty_days, warranty_end_date FROM projects WHERE id = ?', [seeded.projectId]);
+        assert.equal(project.deadline, null);
+        assert.equal(project.status, 'garantia');
+        assert.equal(project.warranty_start_date, '2026-05-06');
+        assert.equal(project.warranty_days, 30);
+        assert.equal(project.warranty_end_date, '2026-06-05');
+
+        const invalidStart = await callController(ProjectController.update, {
+            userId: seeded.gestorId,
+            params: { id: seeded.projectId },
+            body: {
+                status: 'garantia',
+                warranty_start_date: 'data inválida',
+                warranty_days: 30
+            }
+        });
+        assert.equal(invalidStart.statusCode, 400);
+        assert.equal(invalidStart.body.error, 'Data de início da garantia inválida.');
+
+        const invalidDays = await callController(ProjectController.update, {
+            userId: seeded.gestorId,
+            params: { id: seeded.projectId },
+            body: {
+                status: 'garantia',
+                warranty_start_date: '2026-05-06',
+                warranty_days: 0
+            }
+        });
+        assert.equal(invalidDays.statusCode, 400);
+        assert.equal(invalidDays.body.error, 'Prazo da garantia inválido.');
+
+        const invalidDeliveryDeadline = await callController(ProjectController.update, {
+            userId: seeded.gestorId,
+            params: { id: seeded.projectId },
+            body: {
+                deadline: 'prazo inválido'
+            }
+        });
+        assert.equal(invalidDeliveryDeadline.statusCode, 400);
+        assert.equal(invalidDeliveryDeadline.body.error, 'Prazo do projeto inválido.');
     } finally {
         await cleanup();
     }

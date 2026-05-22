@@ -83,6 +83,29 @@ function toDateOnly(value) {
     return null;
 }
 
+function normalizeOptionalDate(value) {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+
+    const text = String(value).trim();
+    if (!text) return null;
+
+    const brDate = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (brDate) return `${brDate[3]}-${brDate[2]}-${brDate[1]}`;
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+
+    return text;
+}
+
+function normalizeOptionalPositiveInteger(value) {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+
+    const number = Number(value);
+    return Number.isInteger(number) ? number : Number.NaN;
+}
+
 function diffDays(fromDate, toDate) {
     const from = new Date(`${fromDate}T00:00:00Z`);
     const to = new Date(`${toDate}T00:00:00Z`);
@@ -441,6 +464,12 @@ module.exports = {
                 financial_visibility
             } = req.body;
             const db = await connectDb();
+            const rawDeadline = deadline !== undefined ? deadline : req.body.due_date;
+            const rawWarrantyStartDate = warranty_start_date !== undefined ? warranty_start_date : req.body.warranty_started_at;
+            const rawWarrantyDays = warranty_days !== undefined ? warranty_days : req.body.warranty_duration_days;
+            const normalizedDeadline = normalizeOptionalDate(rawDeadline);
+            const normalizedWarrantyStartDate = normalizeOptionalDate(rawWarrantyStartDate);
+            const normalizedWarrantyDays = normalizeOptionalPositiveInteger(rawWarrantyDays);
 
             const project = await getProjectAccess(db, id, req.userId);
             if (!project) return res.status(404).json({ error: 'Projeto não encontrado ou acesso negado.' });
@@ -461,8 +490,8 @@ module.exports = {
                 return res.status(400).json({ error: 'Título inválido.' });
             }
 
-            if (deadline !== undefined && deadline !== null && deadline !== '' && !isDate(deadline)) {
-                return res.status(400).json({ error: 'Prazo inválido.' });
+            if (normalizedDeadline !== undefined && normalizedDeadline !== null && !isDate(normalizedDeadline)) {
+                return res.status(400).json({ error: 'Prazo do projeto inválido.' });
             }
 
             const nextBaseValue = base_value !== undefined ? base_value : value;
@@ -474,12 +503,12 @@ module.exports = {
                 return res.status(400).json({ error: 'Valor pago inválido.' });
             }
 
-            if (warranty_start_date !== undefined && warranty_start_date !== null && warranty_start_date !== '' && !isDate(warranty_start_date)) {
-                return res.status(400).json({ error: 'Data inicial da garantia inválida.' });
+            if (normalizedWarrantyStartDate !== undefined && normalizedWarrantyStartDate !== null && !isDate(normalizedWarrantyStartDate)) {
+                return res.status(400).json({ error: 'Data de início da garantia inválida.' });
             }
 
-            if (warranty_days !== undefined && warranty_days !== null && warranty_days !== '' && (!Number.isInteger(Number(warranty_days)) || Number(warranty_days) < 0)) {
-                return res.status(400).json({ error: 'Prazo de garantia inválido.' });
+            if (normalizedWarrantyDays !== undefined && normalizedWarrantyDays !== null && (!Number.isInteger(normalizedWarrantyDays) || normalizedWarrantyDays <= 0)) {
+                return res.status(400).json({ error: 'Prazo da garantia inválido.' });
             }
 
             if (billing_mode !== undefined && !PROJECT_BILLING_MODES.includes(billing_mode)) {
@@ -525,6 +554,24 @@ module.exports = {
                 }
             }
 
+            const isWarrantyEdit = status !== undefined || rawWarrantyStartDate !== undefined || rawWarrantyDays !== undefined;
+            const nextProjectStatus = String(status !== undefined ? status : project.status || '').toLowerCase().trim();
+            const nextWarrantyStartForValidation = rawWarrantyStartDate === undefined
+                ? toDateOnly(project.warranty_start_date)
+                : normalizedWarrantyStartDate;
+            const nextWarrantyDaysForValidation = rawWarrantyDays === undefined
+                ? Number(project.warranty_days || 0)
+                : normalizedWarrantyDays;
+
+            if (isWarrantyEdit && nextProjectStatus === 'garantia') {
+                if (!nextWarrantyStartForValidation) {
+                    return res.status(400).json({ error: 'Data de início da garantia inválida.' });
+                }
+                if (!Number.isInteger(Number(nextWarrantyDaysForValidation)) || Number(nextWarrantyDaysForValidation) <= 0) {
+                    return res.status(400).json({ error: 'Prazo da garantia inválido.' });
+                }
+            }
+
             const updates = [];
             const params = [];
             function addField(field, value) {
@@ -542,14 +589,14 @@ module.exports = {
             if (amount_paid !== undefined) addField('amount_paid', toMoney(amount_paid));
             if (billing_mode !== undefined) addField('billing_mode', billing_mode);
             if (financial_visibility !== undefined) addField('financial_visibility', financial_visibility);
-            if (deadline !== undefined) addField('deadline', deadline || null);
+            if (rawDeadline !== undefined) addField('deadline', normalizedDeadline);
             if (scope !== undefined) addField('scope', nextScope);
             if (team_id !== undefined || scope !== undefined) addField('team_id', nextTeamId);
 
-            const hasWarrantyChange = warranty_start_date !== undefined || warranty_days !== undefined;
+            const hasWarrantyChange = rawWarrantyStartDate !== undefined || rawWarrantyDays !== undefined;
             if (hasWarrantyChange) {
-                const start = warranty_start_date === undefined ? project.warranty_start_date : warranty_start_date || null;
-                const days = warranty_days === undefined ? Number(project.warranty_days || 0) : Number(warranty_days || 0);
+                const start = rawWarrantyStartDate === undefined ? project.warranty_start_date : normalizedWarrantyStartDate;
+                const days = rawWarrantyDays === undefined ? Number(project.warranty_days || 0) : normalizedWarrantyDays;
                 addField('warranty_start_date', start);
                 addField('warranty_days', days);
                 addField('warranty_end_date', calculateWarrantyEndDate(start, days));

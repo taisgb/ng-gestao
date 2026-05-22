@@ -1051,6 +1051,14 @@ $line: #ece7df;
       gap: 6px;
     }
 
+    small {
+      color: var(--text-muted);
+      display: block;
+      font-size: 0.74rem;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
     input,
     select,
     textarea {
@@ -1077,6 +1085,27 @@ $line: #ece7df;
       display: grid;
       gap: 10px;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .warranty-preview {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+
+      span {
+        color: var(--text-muted);
+        font-size: 0.74rem;
+        font-weight: 820;
+        text-transform: uppercase;
+      }
+
+      strong {
+        color: var(--text);
+        font-size: 1rem;
+      }
     }
 
     .drawer-actions {
@@ -1466,6 +1495,17 @@ $line: #ece7df;
       padding-top: 12px;
     }
 
+    .entry-context-help {
+      background: color-mix(in srgb, var(--info) 10%, var(--surface));
+      border: 1px solid color-mix(in srgb, var(--info) 18%, var(--border));
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.84rem;
+      line-height: 1.45;
+      margin: 0;
+      padding: 10px 12px;
+    }
+
     .span-2 {
       grid-column: span 2;
     }
@@ -1850,8 +1890,19 @@ body[data-theme='dark'] {
       }
 
       label,
-      p {
+      p,
+      small,
+      .warranty-preview span {
         color: #c8c1b7 !important;
+      }
+
+      .warranty-preview {
+        background: #1d2822 !important;
+        border-color: rgba(255, 255, 255, 0.12) !important;
+
+        strong {
+          color: #f4f1ea !important;
+        }
       }
 
       header button,
@@ -1876,11 +1927,13 @@ body[data-theme='dark'] {
     .section-eyebrow,
     .finance-section-header p,
     .quick-form-header p,
+    .entry-context-help,
     .impact-summary p {
       color: #c8c1b7 !important;
     }
 
     .impact-summary,
+    .entry-context-help,
     .entry-search {
       background: #18211c !important;
       border-color: rgba(255, 255, 255, 0.12) !important;
